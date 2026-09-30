@@ -24,7 +24,10 @@
     "transcription_reviewed": {"type": "boolean"},
     "quality_flags": {"type": "array", "items": {"type": "string"}},
     "promoted_to": {"type": ["string", "null"]},
-    "schema_version": {"const": "1.0.0"}
+    "schema_version": {"const": "1.0.0"},
+    "interpretation_needs": {"type": "array", "items": {"enum": ["needs_transcription", "needs_description", "needs_interpretation"]}, "description": "OPTIONAL (K4, additive). Snapshot of open gaps; readers should prefer interpretation_gaps() which also covers legacy records."},
+    "derivative_methods": {"type": "array", "items": {"type": "string", "pattern": "^(literal|description|interpretation):[A-Za-z0-9._-]+$"}, "description": "OPTIONAL (K4). One layer:method entry per derivative layer, e.g. literal:claude."},
+    "derivative_tier": {"const": "candidate", "description": "OPTIONAL (K4). Present once any derivative exists; derivatives are never canonical and never implicitly human-reviewed."}
   },
   "note": "Forward-compatible migration: unknown fields are ignored by readers; schema_version bumps only on breaking change; validators reject unknown schema_version."
 }

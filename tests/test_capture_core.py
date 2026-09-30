@@ -156,6 +156,17 @@ def test_defect1_rewrite_permanently_loses_user_text_tail(cap):
     assert cap.validate_record(r["id"]) != []       # hash no longer matches
 
 
+@pytest.mark.xfail(strict=True, reason="DEFECT-3: writers drop front-matter keys they "
+                   "do not know, so a newer writer's fields vanish on any rewrite")
+def test_unknown_front_matter_key_survives_rewrite(cap):
+    r = cap.capture_text("x", "mcp")
+    p = cap.record_path(r["id"])
+    p.write_text(p.read_text(encoding="utf-8").replace(
+        "schema_version:", "future_field: keep\nschema_version:"), encoding="utf-8")
+    cap.set_state(r["id"], "processing", "alice")
+    assert "future_field: keep" in p.read_text(encoding="utf-8")
+
+
 # ---------------------------------------------------------------- media
 
 def test_media_capture_voice(cap, media):
@@ -276,10 +287,10 @@ def test_existing_record_survives_failed_rewrite(cap, monkeypatch):
 
     def boom(*a, **k):
         raise OSError("disk gremlin")
-    monkeypatch.setattr(os, "replace", boom)
-    with pytest.raises(OSError):
-        cap.set_state(r["id"], "processing", "alice")
-    monkeypatch.undo()
+    with monkeypatch.context() as m:
+        m.setattr(os, "replace", boom)
+        with pytest.raises(OSError):
+            cap.set_state(r["id"], "processing", "alice")
     assert p.read_bytes() == before
     assert [q for q in p.parent.iterdir() if q.name.startswith(".tmp-")] == []
 
@@ -293,10 +304,10 @@ def test_media_rolled_back_when_record_write_fails(cap, media, monkeypatch):
         if calls["n"] == 2:          # 1st = media, 2nd = record
             raise OSError("record write failed")
         return real_replace(src, dst)
-    monkeypatch.setattr(os, "replace", flaky)
-    with pytest.raises(OSError):
-        cap.capture_media(media("a.ogg", OGG), "voice", "mcp")
-    monkeypatch.undo()
+    with monkeypatch.context() as m:
+        m.setattr(os, "replace", flaky)
+        with pytest.raises(OSError):
+            cap.capture_media(media("a.ogg", OGG), "voice", "mcp")
     assert [p for p in cap.CAPTURES_ROOT.rglob("*") if p.is_file()] == []
 
 
