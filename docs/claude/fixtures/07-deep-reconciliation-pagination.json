@@ -103,7 +103,8 @@
    },
    "expect": {
     "ok": true,
-    "truncated": true,
+    "truncated": false,
+    "next_cursor": "!null",
     "sections.canonical_records.total": ">=7"
    },
    "save_cursor": true
@@ -133,5 +134,6 @@
  "reply_must_not_match": [
   "(?i)the server (confirmed|decided)"
  ],
- "page_limit": 5
+ "page_limit": 5,
+ "notes": "Paging is not truncation: truncated stays false (it is reserved for safety bounds, with truncation_reason); more data is signalled by a non-null next_cursor."
 }

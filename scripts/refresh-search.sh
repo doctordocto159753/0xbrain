@@ -24,14 +24,23 @@ command -v qmd >/dev/null 2>&1 || {
     echo "qmd not found on PATH. Install: npm install -g @tobilu/qmd (Node >= 22)" >&2
     exit 2
 }
-out() { if [ "$quiet" -eq 1 ]; then cat >/dev/null; else cat; fi; }
-if ! "$PY" "$ROOT/scripts/search_lexical.py" --root "$ROOT" status | "$PY" -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["index_present"] else 1)'; then
-    "$PY" "$ROOT/scripts/search_lexical.py" --root "$ROOT" configure | out
+# run CMD...: show its output unless --quiet; on failure always show it.
+run() {
+    if [ "$quiet" -eq 1 ]; then
+        _o=$("$@" 2>&1) || { _rc=$?; printf '%s\n' "$_o" >&2; return $_rc; }
+    else
+        "$@"
+    fi
+}
+S="$ROOT/scripts/search_lexical.py"
+if ! "$PY" "$S" --root "$ROOT" status 2>/dev/null | "$PY" -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["index_present"] else 1)'; then
+    run "$PY" "$S" --root "$ROOT" configure
 fi
-"$PY" "$ROOT/scripts/search_lexical.py" --root "$ROOT" refresh | out
-"$PY" "$ROOT/scripts/search_lexical.py" --root "$ROOT" status | out
+run "$PY" "$S" --root "$ROOT" refresh
+run "$PY" "$S" --root "$ROOT" status
 if [ "$validate" -eq 1 ]; then
-    (cd "$ROOT" && "$PY" scripts/validate_repo.py --full) | out || exit 1
-    (cd "$ROOT" && "$PY" scripts/validate_content_release.py) | out || exit 2
+    cd "$ROOT"
+    run "$PY" scripts/validate_repo.py --full || exit 1
+    run "$PY" scripts/validate_content_release.py || exit 2
 fi
 [ "$quiet" -eq 1 ] || echo "SEARCH REFRESH PASS (lexical only)"

@@ -2,7 +2,8 @@
 
 Each fixture is a reference transcript: the tool calls a compliant Claude
 makes, and its reply. The test (1) replays the calls against the real
-surface + FakeBackend and checks the results, (2) checks forbidden tools are
+surface over the real integrated backend (a throwaway git wiki seeded from
+the fixture's setup) and checks the results, (2) checks forbidden tools are
 absent, (3) lints the reply against the standing rules (no persistence claim
 without a successful tool result; required/forbidden phrases).
 
@@ -23,13 +24,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from brain_surface import BrainSurface  # noqa: E402
-from brain_surface.backend import FakeBackend  # noqa: E402
+from brain_surface.backend import BackendUnavailable, WikiBackend  # noqa: E402
+from conftest import PNG, commit_all, record  # noqa: E402
 
 FIXDIR = ROOT / "docs" / "claude" / "fixtures"
 FIXTURES = sorted(FIXDIR.glob("*.json"))
 CLAIM_RE = re.compile(
     r"(?i)\b(saved|stored|captured|recorded|filed|queued)\b|ذخیره شد|ثبت شد")
 NEG_RE = re.compile(r"(?i)nothing was saved|not (been )?(saved|stored)|unavailable")
+ZONE_DIR = {"03-objects": "03-objects", "04-notes": "04-notes", "05-claims": "05-claims",
+            "06-relations": "06-relations", "02-sources": "02-sources/records"}
 
 
 def dig(obj, dotted):
@@ -46,20 +50,48 @@ def check(result, expect):
         assert got is not KeyError, f"{path} missing in {result}"
         if isinstance(want, str) and want.startswith(">="):
             assert got >= int(want[2:]), (path, got, want)
+        elif want == "!null":
+            assert got is not None, (path, got)
         else:
             assert got == want, (path, got, want)
 
 
-def load(fx):
-    b = FakeBackend()
+class Outage:
+    """Wraps the real backend; listed operations fail as a dead dependency would."""
+
+    def __init__(self, inner, down):
+        self.inner, self.down = inner, set(down)
+
+    def __getattr__(self, name):
+        if name in self.down:
+            def fail(*a, **kw):
+                raise BackendUnavailable(f"{name} unavailable")
+            return fail
+        return getattr(self.inner, name)
+
+
+def load(fx, root, tmp_path):
+    """Materialise the fixture setup as real records/captures in a real wiki.
+    Returns the surface and the fake->real id map for setup captures."""
+    import wiki_capture as wc
     for r in fx.get("setup", {}).get("records", []):
-        b.add_record(r["id"], r["title"], r["text"], zone=r.get("zone", "03-objects"),
-                     level=r.get("level", 4), edges=r.get("edges", ()))
+        zone = ZONE_DIR[r.get("zone", "03-objects")]
+        record(root, f"{zone}/{r['id']}.md", r["id"], r["title"], r["text"],
+               links=r.get("edges", ()))
+    ids = {}
     for c in fx.get("setup", {}).get("captures", []):
-        b.add_capture(c["id"], c["text"], media=c.get("media"), needs=c.get("needs"))
-    b.unavailable |= set(fx.get("connector_unavailable", []))
-    kw = {"page_limit": fx["page_limit"]} if "page_limit" in fx else {}
-    return BrainSurface(b, **kw), b
+        if c.get("media"):
+            src = tmp_path / "photo.png"
+            src.write_bytes(PNG)
+            made = wc.capture_media(str(src), c["media"], "mcp")
+        else:
+            made = wc.capture_text(c["text"], "mcp")
+        ids[c["id"]] = made["id"]
+    commit_all(root)
+    backend = WikiBackend(root, page_size=fx.get("page_limit"))
+    if fx.get("connector_unavailable"):
+        backend = Outage(backend, fx["connector_unavailable"])
+    return BrainSurface(backend), ids
 
 
 def lint_honesty(reply, results, fx):
@@ -75,22 +107,34 @@ def lint_honesty(reply, results, fx):
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=[p.stem for p in FIXTURES])
-def test_fixture(path):
+def test_fixture(path, brain_wiki, tmp_path):
     fx = json.loads(path.read_text(encoding="utf-8"))
-    s, b = load(fx)
+    s, ids = load(fx, brain_wiki, tmp_path)
     used, results, cursor = [], [], None
+    fake = {"cap": 0, "prop": 0}
     for step in fx["reference_calls"]:
-        args = json.loads(json.dumps(step["args"]).replace("$cursor", cursor or ""))
-        res = s.call(step["tool"], args)
+        raw = json.dumps(step["args"], ensure_ascii=False).replace("$cursor", cursor or "")
+        for fid, real in ids.items():
+            raw = raw.replace(fid, real)
+        res = s.call(step["tool"], json.loads(raw))
         used.append(step["tool"])
         results.append(res)
         check(res, step.get("expect", {}))
         if step.get("save_cursor"):
             cursor = res["next_cursor"]
+        ref = res.get("ref") if step["tool"] in ("brain_capture", "brain_propose") else None
+        if ref:   # the reference reply names the n-th new object by a placeholder id
+            kind = ref.split(":", 1)[0]
+            fake[kind] += 1
+            ids[f"{kind}-fake-{fake[kind]:04d}"] = ref.split(":", 1)[1]
     assert not set(used) & set(fx["forbidden_tools"]), (used, fx["forbidden_tools"])
 
     reply = fx["reference_reply"]
+    for fid, real in ids.items():
+        reply = reply.replace(fid, real)
     for pat in fx["reply_must_match"]:
+        for fid, real in ids.items():
+            pat = pat.replace(fid, real)
         assert re.search(pat, reply), f"reply lacks {pat!r}"
     for pat in fx["reply_must_not_match"]:
         assert not re.search(pat, reply), f"reply contains forbidden {pat!r}"

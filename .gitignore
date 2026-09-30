@@ -6,6 +6,9 @@ _proposals/generated/
 .pytest_cache/
 scripts/__pycache__/
 scripts/capture/__pycache__/
+**/__pycache__/
+.venv/
+venv/
 # capture tests/fixtures are tracked; only private/real media stays local
 scripts/capture/fixtures/private/
 *.pyc

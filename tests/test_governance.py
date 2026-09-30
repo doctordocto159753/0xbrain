@@ -90,15 +90,26 @@ def test_record_id_ref_resolves(wiki):
     ("relation-edge", good_fields(source_passage={"path": "/etc/passwd", "quote": QUOTE}),
      [SRC], "not canonical"),
     ("relation-edge", good_fields(), [], "evidence_refs must be non-empty"),
-    ("relation-edge", good_fields(), "not-a-list", "list of strings"),
+    ("relation-edge", good_fields(), "not-a-list", "must be a list of refs"),
     ("relation-edge", good_fields(), ["mw-src-9999999999"], "does not resolve"),
     ("relation-edge", good_fields(), ["../../etc/passwd"], "does not resolve"),
     ("relation-edge", good_fields(), ["_originals/anything.md"], "does not resolve"),
+    ("relation-edge", good_fields(), [{"ref": SRC, "quote": "forged secondary quote, long enough"}],
+     "NOT found verbatim"),
+    ("relation-edge", good_fields(), [{"ref": SRC, "quote": "short"}], ">= 20 chars"),
+    ("relation-edge", good_fields(), [{"ref": SRC, "path": "/etc/passwd"}], "must be a list of refs"),
 ])
 def test_junk_rejected(wiki, kind, fields, refs, needle):
     chk = ea.validate_submission(wiki, kind, fields, refs)
     assert not chk.ok
     assert any(needle in e for e in chk.errors), chk.errors
+
+
+def test_quoted_evidence_refs_are_verified_and_stored(wiki):
+    chk = ea.validate_submission(wiki, "relation-edge", good_fields(),
+                                 [{"ref": "mw-src-1111111111", "quote": QUOTE}])
+    assert chk.ok, chk.errors
+    assert chk.body["evidence_refs"] == [{"ref": "mw-src-1111111111", "quote": QUOTE}]
 
 
 def test_passage_must_be_covered_by_a_ref(wiki):
@@ -353,7 +364,7 @@ def refs(res, section=None):
 
 def test_focused_is_direct_neighborhood(graph):
     res = rc.reconcile_context(graph, seed_ref="mw-obj-aaaaaa01")
-    canon = refs(res, "canonical")
+    canon = refs(res, "canonical_records")
     assert "mw-obj-aaaaaa01" in canon and "mw-obj-bbbbbb02" in canon
     assert "mw-obj-cccccc03" not in canon
     assert refs(res, "claims") == ["mw-clm-kkkkkk01"]
@@ -370,7 +381,7 @@ def test_focused_is_direct_neighborhood(graph):
 
 def test_deep_is_multi_hop_and_ordered(graph):
     res = rc.reconcile_context(graph, seed_ref="mw-obj-aaaaaa01", depth="deep")
-    canon = [(i["depth"], i["ref"]) for i in res["items"] if i["section"] == "canonical"]
+    canon = [(i["depth"], i["ref"]) for i in res["items"] if i["section"] == "canonical_records"]
     assert canon == sorted(canon)
     assert {"mw-obj-cccccc03", "mw-obj-dddddd04", "mw-obj-eeeeee05"} <= {r for _, r in canon}
     assert [i["section"] for i in res["items"]] == sorted(
@@ -418,7 +429,7 @@ def test_sections_and_expand(graph):
     assert {i["section"] for i in res["items"]} == {"claims", "captures"}
     assert set(res["section_totals"]) == {"claims", "captures"}
     assert all("excerpt" in i and "content" not in i for i in res["items"])
-    ex = rc.reconcile_context(graph, seed_ref="mw-obj-aaaaaa01", sections=["canonical"],
+    ex = rc.reconcile_context(graph, seed_ref="mw-obj-aaaaaa01", sections=["canonical_records"],
                               expand=["mw-obj-aaaaaa01"])
     a = next(i for i in ex["items"] if i["ref"] == "mw-obj-aaaaaa01")
     assert "alpha text" in a["content"] and a["content_truncated"] is False
@@ -439,16 +450,16 @@ def test_safety_limits_report_truncation(graph, monkeypatch):
 
 def test_query_only_and_injected_search(graph):
     res = rc.reconcile_context(graph, query="alpha text")
-    assert "mw-obj-aaaaaa01" in refs(res, "canonical")
+    assert "mw-obj-aaaaaa01" in refs(res, "canonical_records")
     fake = lambda q, n: [{"file": "qmd://wiki/c.md", "score": 0.9}]
     res2 = rc.reconcile_context(graph, query="zzz", search_fn=fake)
-    assert "mw-obj-cccccc03" in refs(res2, "canonical")
+    assert "mw-obj-cccccc03" in refs(res2, "canonical_records")
 
 
 def test_capture_seed_and_errors(graph):
     res = rc.reconcile_context(graph, seed_ref="cap-20260901-101010-abcd")
     assert "cap-20260901-101010-abcd" in refs(res, "captures")
-    assert "mw-obj-aaaaaa01" in refs(res, "canonical")
+    assert "mw-obj-aaaaaa01" in refs(res, "canonical_records")
     for kw, code in [({}, "no_anchor"), ({"seed_ref": "nope"}, "seed_not_found"),
                      ({"seed_ref": "mw-obj-aaaaaa01", "depth": "wide"}, "bad_depth"),
                      ({"seed_ref": "mw-obj-aaaaaa01", "sections": ["x"]}, "bad_sections")]:

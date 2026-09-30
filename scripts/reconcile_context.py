@@ -15,8 +15,8 @@ depth="focused"  seed + direct (1-hop) neighborhood.
 depth="deep"     multi-hop neighborhood (until exhausted, safety-capped).
 
 Sections (fixed order, deterministic within each):
-  canonical claims relations sources captures superseded open_proposals
-  unresolved chronology
+  canonical_records claims relations source_records captures superseded
+  open_proposals unresolved chronology   (frozen K5 names)
 
 Paging: `total` / `returned` / `next_cursor`. A cursor is bound to a
 fingerprint of the current result set; if the corpus changed it is refused
@@ -47,10 +47,10 @@ try:  # capture parsing is optional; captures are simply skipped if unavailable
 except Exception:  # noqa: BLE001
     _cap = None
 
-SECTION_ORDER = ("canonical", "claims", "relations", "sources", "captures",
+SECTION_ORDER = ("canonical_records", "claims", "relations", "source_records", "captures",
                  "superseded", "open_proposals", "unresolved", "chronology")
-ZONE_SECTION = {"02-sources": "sources", "03-objects": "canonical",
-                "04-notes": "canonical", "05-claims": "claims",
+ZONE_SECTION = {"02-sources": "source_records", "03-objects": "canonical_records",
+                "04-notes": "canonical_records", "05-claims": "claims",
                 "06-relations": "relations"}
 SUPERSEDED_STATUSES = {"superseded", "retired", "deprecated", "withdrawn"}
 UNRESOLVED_STATUSES = {"unresolved", "open", "disputed", "contested"}
@@ -244,8 +244,9 @@ def _item(section, ref, path, title, kind, status, depth, reason, text, expand_a
           expand: set, **extra) -> tuple[dict, bool]:
     body = _strip_frontmatter(text)
     content_truncated = False
-    it = {"section": section, "ref": ref, "path": path, "title": title or "",
-          "kind": kind or "", "status": status or "", "depth": depth, "reason": reason}
+    it = {"section": section, "id": ref, "ref": ref, "path": path, "title": title or "",
+          "kind": kind or "", "status": status or "", "depth": depth, "reason": reason,
+          "authority_level": ea.authority_level(path)}
     if expand_all or ref in expand or path in expand:
         raw = body.encode("utf-8", errors="replace")
         if len(raw) > MAX_CONTENT_BYTES:
@@ -273,8 +274,8 @@ def build_items(root: Path, con, nodes: dict, seed_info: dict, query, captures,
         tokens.add(seed_info["id"])
     tokens |= {r[1] for r in rows.values()}
 
-    def rank(x):
-        return (x["depth"], x["ref"])
+    def rank(x):   # K5: authority level, then graph distance, then id
+        return (x["authority_level"], x["depth"], x["ref"])
 
     rec_items: dict[str, list[dict]] = {s: [] for s in SECTION_ORDER}
     for nid, info in nodes.items():
@@ -283,7 +284,7 @@ def build_items(root: Path, con, nodes: dict, seed_info: dict, query, captures,
             continue
         _, path, zone, title, kind, status = r
         sec = "superseded" if (status or "").lower() in SUPERSEDED_STATUSES \
-            else ZONE_SECTION.get(zone, "canonical")
+            else ZONE_SECTION.get(zone, "canonical_records")
         it, trunc = _item(sec, nid, path, title, kind, status, info["depth"],
                           info["reason"], _read(root, path), expand_all, expand)
         if trunc and "content_byte_limit" not in reasons:
@@ -316,7 +317,8 @@ def build_items(root: Path, con, nodes: dict, seed_info: dict, query, captures,
         if hit or (query and query in blob):
             pid = str(prop.get("id"))
             rec_items["open_proposals"].append({
-                "section": "open_proposals", "ref": pid, "path": ea.QUEUE_REL.as_posix(),
+                "section": "open_proposals", "id": pid, "ref": pid,
+                "path": ea.QUEUE_REL.as_posix(), "authority_level": ea.CANDIDATE_LEVEL,
                 "title": "", "kind": prop.get("kind") or "", "status": prop.get("status") or "",
                 "depth": None,
                 "reason": f"references {hit[0]}" if hit else f"query: {query}",
@@ -330,7 +332,8 @@ def build_items(root: Path, con, nodes: dict, seed_info: dict, query, captures,
                 f"WHERE resolved_id IS NULL AND src_id IN ({marks}) "
                 f"ORDER BY src_id, field, target", tuple(sorted(included_ids))):
             rec_items["unresolved"].append({
-                "section": "unresolved", "ref": f"{src}::{field}::{target}",
+                "section": "unresolved", "id": f"{src}::{field}::{target}",
+                "ref": f"{src}::{field}::{target}", "authority_level": ea.authority_level(rows[src][1]),
                 "path": rows[src][1], "title": "", "kind": "dangling-edge",
                 "status": "unresolved", "depth": nodes[src]["depth"],
                 "reason": f"{tkind} target does not resolve", "src_id": src,
@@ -338,7 +341,8 @@ def build_items(root: Path, con, nodes: dict, seed_info: dict, query, captures,
     for nid, r in rows.items():
         if (r[5] or "").lower() in UNRESOLVED_STATUSES:
             rec_items["unresolved"].append({
-                "section": "unresolved", "ref": f"{nid}::status", "path": r[1],
+                "section": "unresolved", "id": f"{nid}::status", "ref": f"{nid}::status",
+                "path": r[1], "authority_level": ea.authority_level(r[1]),
                 "title": r[3] or "", "kind": "status", "status": r[5],
                 "depth": nodes[nid]["depth"], "reason": f"record status is {r[5]!r}",
                 "_sha": _sha(f"{nid}{r[5]}")})
@@ -354,7 +358,7 @@ def build_items(root: Path, con, nodes: dict, seed_info: dict, query, captures,
         rec_items["chronology"].append(it)
 
     keyers = {
-        "canonical": rank, "claims": rank, "relations": rank, "sources": rank,
+        "canonical_records": rank, "claims": rank, "relations": rank, "source_records": rank,
         "superseded": rank,
         "captures": lambda x: (x["ref"],),
         "open_proposals": lambda x: (x["ref"],),

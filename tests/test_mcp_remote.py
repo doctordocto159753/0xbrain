@@ -32,7 +32,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO / "scripts" / "capture"))
 
-from remote_mcp.adapter import REMOTE_DENYLIST, ToolSpec, legacy_adapter, load_adapter  # noqa: E402
+from remote_mcp.adapter import (REMOTE_DENYLIST, ToolSpec, filter_remote,  # noqa: E402
+                                legacy_adapter, load_adapter)
 from remote_mcp.server import build_app  # noqa: E402
 import wiki_mcp_server as wms  # noqa: E402
 
@@ -50,8 +51,8 @@ class Running:
     def __init__(self, tools=None, state_dir=None, port=None):
         self.port = port or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        app = build_app(public_url=self.url, owner_secret=SECRET, tools=tools,
-                        state_dir=state_dir, allow_loopback_redirects=True)
+        self.app = app = build_app(public_url=self.url, owner_secret=SECRET, tools=tools,
+                                   state_dir=state_dir, allow_loopback_redirects=True)
         self.server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port,
                                                     log_level="warning"))
         self.thread = threading.Thread(target=self.server.run, daemon=True)
@@ -201,12 +202,16 @@ def test_wrong_owner_secret_and_lockout():
 
 # ---------------------------------------------------------- authorized flow
 def test_full_flow_lists_tools_without_review_tool(sandbox):
-    with Running(tools=load_adapter()) as srv:
+    # development-only legacy surface (explicit opt-in); the product default is
+    # the six semantic tools, see tests/test_remote_semantic.py
+    tools = load_adapter("legacy", env={"BRAIN_UNSAFE_REMOTE_LEGACY": "1"})
+    with Running(tools=tools) as srv:
         result = run(with_session(srv.url, MemStorage(), lambda s: s.list_tools()))
     names = {t.name for t in result.tools}
     assert "wiki_exact" in names and "wiki_capture_text" in names
     assert not (names & REMOTE_DENYLIST)
-    assert len(names) == 11
+    assert "wiki_read" not in names and "wiki_get_media" not in names
+    assert len(names) == 9
 
 
 def test_business_logic_reused_through_remote(sandbox):
@@ -219,7 +224,7 @@ def test_business_logic_reused_through_remote(sandbox):
         denied = await s.call_tool("wiki_mark_capture_reviewed", {"id": "x", "actor": "a"})
         return exact, cap, prop, bad, unknown, denied
 
-    with Running(tools=load_adapter()) as srv:
+    with Running(tools=load_adapter("legacy", env={"BRAIN_UNSAFE_REMOTE_LEGACY": "1"})) as srv:
         exact, cap, prop, bad, unknown, denied = run(with_session(srv.url, MemStorage(), scenario))
     assert [m["file"] for m in exact["matches"]] == ["03-objects/a.md"]
     assert cap["ok"] and (sandbox / "01-inbox" / "captures").exists()
@@ -230,13 +235,24 @@ def test_business_logic_reused_through_remote(sandbox):
 
 
 def test_denylist_holds_for_any_adapter():
-    rogue = [ToolSpec("wiki_mark_capture_reviewed", "x", {"type": "object"}, lambda a: "{}"),
-             ToolSpec("ok_tool", "x", {"type": "object"}, lambda a: '{"ok": true}')]
-    import types as _t
-    mod = _t.ModuleType("rogue_adapter_mod")
-    mod.make = lambda: rogue
-    sys.modules["rogue_adapter_mod"] = mod
-    assert [t.name for t in load_adapter("rogue_adapter_mod:make")] == ["ok_tool"]
+    rogue = [ToolSpec(n, "x", {"type": "object"}, lambda a: "{}")
+             for n in ("wiki_mark_capture_reviewed", "wiki_read", "wiki_get_media",
+                       "get", "multi_get", "query", "vsearch")]
+    rogue.append(ToolSpec("ok_tool", "x", {"type": "object"}, lambda a: '{"ok": true}'))
+    assert [t.name for t in filter_remote(rogue)] == ["ok_tool"]
+    with Running(tools=rogue) as srv:        # build_app filters explicit tool lists too
+        names = {t.name for t in run(with_session(srv.url, MemStorage(),
+                                                  lambda s: s.list_tools())).tools}
+    assert names == {"ok_tool"}
+
+
+def test_adapter_selection_fails_closed():
+    with pytest.raises(ValueError):
+        load_adapter("legacy", env={})                       # unsafe mode needs explicit opt-in
+    with pytest.raises(ValueError):
+        load_adapter("some.module:callable", env={})         # no arbitrary imports
+    with pytest.raises(ValueError):
+        load_adapter(None, env={"BRAIN_MCP_ADAPTER": "legacy"})
 
 
 def test_handler_exception_does_not_crash_server():
@@ -252,7 +268,9 @@ def test_handler_exception_does_not_crash_server():
 
     with Running(tools=tools) as srv:
         first, second = run(with_session(srv.url, MemStorage(), scenario))
-    assert "RuntimeError: kaboom" in first["error"] and second == {"ok": True}
+    # wrapped, never a traceback or exception message to the client
+    assert first == {"ok": False, "error": {"code": "E_INTERNAL", "message": "RuntimeError"}}
+    assert second == {"ok": True}
 
 
 def test_refresh_rotation_revocation_and_restart_persistence(tmp_path):

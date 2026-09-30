@@ -1,6 +1,9 @@
 * text=auto
 
 _originals/** -text
+# Capture records are hashed byte-exactly (CR included); never let Git
+# normalize their line endings on commit or checkout.
+01-inbox/captures/** -text
 02-sources/text/** -text
 02-sources/provenance/** -text -diff
 _proposals/patches/** -text -diff

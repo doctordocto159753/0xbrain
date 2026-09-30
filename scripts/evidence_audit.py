@@ -19,6 +19,8 @@ Importable API (single validator, no second implementation):
   validate_submission(root, kind, fields, evidence_refs) -> SubmissionCheck
       pre-queue gate for brain_propose: kind + structured fields + evidence
       refs. audit() and validate_submission() share validate_body().
+      evidence_refs items are internal refs (str) or {"ref", "quote"}; every
+      supplied quote must occur verbatim in the file its ref resolves to.
 
 Usage: python scripts/evidence_audit.py [--root WIKI_ROOT] [--verbose]
 """
@@ -36,6 +38,26 @@ SCHEMA_REL = Path("00-system/policies/proposal_schema.json")
 QUEUE_REL = Path("_proposals/proposals.jsonl")
 CANONICAL_ZONES = ("02-sources", "03-objects", "04-notes", "05-claims", "06-relations")
 SHA256_RE = re.compile(r"\b[0-9a-f]{64}\b", re.IGNORECASE)
+
+# Authority hierarchy (SYSTEM_DESIGN.md section 2), 1-indexed so that "model
+# output = level 7": accepted records 4, derived witness 5, interpretive
+# notes 6, candidate/AI material and intake 7. Longest matching prefix wins.
+# Single source for K5 ordering and every authority label on the K3 surface.
+AUTHORITY_LEVEL_BY_PREFIX = {
+    "02-sources/records/": 4, "02-sources/text/": 5, "02-sources/": 4,
+    "03-objects/": 4, "05-claims/": 4, "06-relations/": 4, "04-notes/": 6,
+    "07-genesis/": 4, "_captures/": 7, "01-inbox/": 7, "_proposals/": 7,
+}
+CANDIDATE_LEVEL = 7
+
+
+def authority_level(rel: str) -> int:
+    rel = str(rel).replace("\\", "/")
+    best = None
+    for prefix, level in AUTHORITY_LEVEL_BY_PREFIX.items():
+        if rel.startswith(prefix) and (best is None or len(prefix) > len(best[0])):
+            best = (prefix, level)
+    return best[1] if best else CANDIDATE_LEVEL
 
 
 def _load_proposals(root: Path) -> list[dict]:
@@ -266,8 +288,12 @@ def validate_submission(root: Path, kind: str, structured_fields,
         errs += validate_body(root, kind, dict(structured_fields), schema)
 
     refs: list[dict] = []
-    if not isinstance(evidence_refs, list) or any(not isinstance(r, str) for r in evidence_refs):
-        errs.append("evidence_refs must be a list of strings")
+    def _entry_ok(r) -> bool:
+        return isinstance(r, str) or (
+            isinstance(r, dict) and set(r) <= {"ref", "quote"} and isinstance(r.get("ref"), str)
+            and isinstance(r.get("quote", ""), str))
+    if not isinstance(evidence_refs, list) or not all(_entry_ok(r) for r in evidence_refs):
+        errs.append("evidence_refs must be a list of refs or {ref, quote} objects")
         evidence_refs = []
     needs_passage = "source_passage" in required
     if needs_passage and not evidence_refs:
@@ -275,12 +301,21 @@ def validate_submission(root: Path, kind: str, structured_fields,
     if len(evidence_refs) > 100:
         errs.append("evidence_refs exceeds 100 entries")
         evidence_refs = evidence_refs[:100]
+    stored: list = []
     for r in evidence_refs:
-        hit = resolve_ref(root, r)
+        ref, quote = (r, None) if isinstance(r, str) else (r["ref"], r.get("quote"))
+        hit = resolve_ref(root, ref)
         if hit is None:
-            errs.append(f"evidence ref does not resolve: {str(r)[:120]!r}")
-        else:
-            refs.append(hit)
+            errs.append(f"evidence ref does not resolve: {str(ref)[:120]!r}")
+            continue
+        refs.append(hit)
+        stored.append(hit["ref"] if quote is None else {"ref": hit["ref"], "quote": quote})
+        if quote is not None:
+            # every quote a caller attaches must be verbatim in the file it cites
+            if len(quote) < 20:
+                errs.append(f"quote for {ref!r} must be >= 20 chars")
+            elif quote not in (root / hit["path"]).read_text(encoding="utf-8", errors="ignore"):
+                errs.append(f"quote NOT found verbatim in {ref!r}")
     sp = structured_fields.get("source_passage")
     if needs_passage and isinstance(sp, dict) and not errs:
         cited = _zone_path(root, str(sp.get("path", "")))
@@ -290,7 +325,7 @@ def validate_submission(root: Path, kind: str, structured_fields,
     if errs:
         return SubmissionCheck(errs, None, refs)
     body = dict(structured_fields)
-    body["evidence_refs"] = [x["ref"] for x in refs]
+    body["evidence_refs"] = stored
     return SubmissionCheck([], body, refs)
 
 

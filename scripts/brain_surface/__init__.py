@@ -1,8 +1,9 @@
 """Claude-facing semantic surface (frozen K3) over the Living Wiki core.
 
-Transport, auth and Git commit policy live elsewhere (Agent A / K9). This
-package owns only the tool contract: argument validation, ref discipline,
-result envelopes, authority labelling and the K5 pagination envelope.
+Transport and auth live in scripts/remote_mcp (Agent A). This package owns the
+tool contract (contract.py), the one public ref grammar (refs.py), the
+envelopes (surface.py) and the single production backend (backend.py) that
+wires the surface to search (C), capture (D) and governance (E).
 """
 from .contract import TOOLS, TOOL_NAMES  # noqa: F401
 from .surface import BrainSurface  # noqa: F401

@@ -51,6 +51,8 @@ REFRESH_TTL = 30 * 24 * 3600
 LOGIN_MAX_FAILURES = 5
 LOGIN_WINDOW = 300
 MIN_SECRET_LEN = 16
+MAX_PENDING = 64          # unauthenticated /authorize cannot grow memory without bound
+MAX_CLIENTS = 32          # unauthenticated DCR cannot grow the state file without bound
 DEFAULT_REDIRECTS = (
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
@@ -117,7 +119,11 @@ class OwnerAuthProvider:
     def _save_state(self) -> None:
         if not self._state_file:
             return
-        self._state_file.parent.mkdir(parents=True, exist_ok=True)
+        self._state_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(self._state_file.parent, 0o700)
+        except OSError:
+            pass
         payload = {
             "clients": {cid: c.model_dump(mode="json") for cid, c in self._clients.items()},
             "refresh": self._refresh,
@@ -148,6 +154,14 @@ class OwnerAuthProvider:
                 raise RegistrationError("invalid_redirect_uri", f"redirect_uri not allowed: {uri}")
         if not client_info.client_id:
             raise RegistrationError("invalid_client_metadata", "missing client_id")
+        if len(self._clients) >= MAX_CLIENTS:
+            # evict the oldest registration that holds no live refresh token
+            live = {r["client_id"] for r in self._refresh.values() if r["expires_at"] >= self._now()}
+            idle = [c for c in self._clients.values() if c.client_id not in live]
+            if not idle:
+                raise RegistrationError("invalid_client_metadata", "client registry full")
+            oldest = min(idle, key=lambda c: c.client_id_issued_at or 0)
+            self._clients.pop(oldest.client_id, None)
         self._clients[client_info.client_id] = client_info
         self._save_state()
 
@@ -161,6 +175,8 @@ class OwnerAuthProvider:
             raise AuthorizeError("invalid_scope", f"only scope '{SCOPE}' exists")
         now = self._now()
         self._pending = {k: v for k, v in self._pending.items() if v[2] > now}
+        while len(self._pending) >= MAX_PENDING:          # drop the oldest pending consent
+            self._pending.pop(min(self._pending, key=lambda k: self._pending[k][2]))
         pid = secrets.token_urlsafe(32)
         self._pending[pid] = (client, params.model_copy(update={"scopes": scopes}), now + PENDING_TTL)
         return f"{self.public_url}{LOGIN_PATH}?p={pid}"
