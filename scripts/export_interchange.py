@@ -215,9 +215,13 @@ def cmd_rocrate(_args) -> int:
     crate = ROOT / "ro-crate-metadata.json"
     data = json.loads(crate.read_text(encoding="utf-8"))
     graph = data.get("@graph", [])
+    def about_id(n):
+        a = n.get("about", "")  # RO-Crate 1.1 uses {"@id": "./"}; tolerate a bare string
+        return str(a.get("@id", "") if isinstance(a, dict) else a)
+
     mds = [n for n in graph
            if n.get("@type") in ("MetadataDescriptor", "CreativeWork")
-           and str(n.get("about", "")).endswith("./")]
+           and about_id(n).endswith("./")]
     if not mds:
         print("INVALID: no MetadataDescriptor about ./ in @graph")
         return 1
