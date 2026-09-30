@@ -111,14 +111,16 @@ hook. Both must be green before any content work is reported as done.
 
 ## 7. Optional local search (QMD)
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/configure-search.ps1
-powershell -ExecutionPolicy Bypass -File scripts/refresh-search.ps1
+```sh
+scripts/configure-search.sh      # Windows: scripts/configure-search.ps1
+scripts/refresh-search.sh        # Windows: scripts/refresh-search.ps1
 ```
 
-Rename collections per instance (edit
-`00-system/configuration/qmd-collections.json`). The index is a disposable
-local derivative; the Markdown remains authoritative.
+Model-free: BM25 plus an exact fallback; no model download, no embeddings.
+Collections are defined in `00-system/configuration/qmd-collections.json`
+(rename per instance there and in `scripts/search_lexical.py` callers). The
+index lives in `_search/qmd` (git-ignored), is a disposable local derivative,
+and the Markdown remains authoritative.
 
 ## 8. First intake (when material arrives)
 

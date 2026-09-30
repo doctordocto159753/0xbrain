@@ -1,0 +1,10 @@
+---
+id: OBJ-0007
+type: method
+title: Provenance Tracing
+fixture: synthetic
+---
+
+# Provenance Tracing
+
+Provenance tracing follows a document from its present custodian back through earlier owners. The result is a finding aid entry, not proof of authorship.

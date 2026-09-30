@@ -48,22 +48,23 @@ gh repo create my-wiki --private --source=. --push
 
 **Pass condition:** GitHub → Actions → "Validate Wiki" green on the push.
 
-## 5. QMD semantic search (optional but recommended)
+## 5. QMD lexical search (optional, model-free)
 
-Requires Node.js 22+. QMD's index is a disposable local derivative; the
-Markdown remains authoritative. First `qmd query` downloads local embedding
-models (~2 GB) — allow minutes.
+Requires Node.js 22+. QMD's index is a disposable local derivative under
+`_search/qmd`; the Markdown remains authoritative. No model is downloaded and
+no embeddings are generated: search is BM25 plus a deterministic exact
+fallback (see `SEARCH_GUIDE.md`).
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/configure-search.ps1
 powershell -ExecutionPolicy Bypass -File scripts/refresh-search.ps1
-qmd status
+python scripts/search_lexical.py status
 ```
 
-**Pass condition:** `qmd status` reports collections present and embedded.
+**Pass condition:** `status` reports `"stale": false`.
 
-Note: the index can go stale silently. Run `qmd update` then `qmd embed`
-when the tip appears; check `qmd status` before benchmark claims.
+Note: the index can go stale silently. Run `refresh-search.ps1` after content
+changes; `status` compares files on disk with files indexed.
 
 ## 6. MCP registration (optional, per harness)
 

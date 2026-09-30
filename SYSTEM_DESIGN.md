@@ -137,11 +137,14 @@ See `INSTANTIATE.md` for the full checklist. Summary:
 | `wiki_mcp_server.py` | MCP: `wiki_read`, `wiki_search`, `wiki_propose` — writes go only to `_proposals/` | operational |
 | `export_interchange.py` | PROV-O JSON-LD, SKOS, TEI skeletons — derived views, never the record | available (unexercised) |
 | `export_public.py` | sensitivity-reviewed public export OUTSIDE the repo | available (unexercised) |
-| `run-semantic-benchmark.py` | QMD retrieval benchmark against an expected-path set | available (unexercised) |
+| `search_lexical.py` | model-free search: QMD lexical (BM25, typed `lex:`, `--no-rerank`) + normalisation-aware exact fallback; scopes `canonical`/`captures`/`all`; index configure/refresh/freshness; refuses embed/vsearch/bare query | operational |
+| `run_lexical_eval.py` / `prove_search_model_free.py` | lexical evaluation over the synthetic fixture in `tests/search_eval/`; clean-room no-model proof (empty HOME, no network) | operational |
+| `run-semantic-benchmark.py` | OPTIONAL model-backed QMD retrieval benchmark; requires `--allow-models`; not part of the default path | available (unexercised) |
 | `file-to-md/to_md.py` | converts pdf/docx/pptx/xlsx/html/epub to clean md with a provenance header — the derivative-extraction step of intake; OCR routing rules in `.claude/skills/wiki-file-to-md/SKILL.md` | operational |
 | `check_research_spans.py` | citation-span audit over an external research quarantine | available (unexercised) |
 | `create-backup.ps1` | Windows helper: zip backup of the repo to `_wiki_backups/` | operational |
-| `configure-search.ps1` / `refresh-search.ps1` / `search-wiki.ps1` / `verify-install.ps1` | Windows helpers: QMD config/refresh, verify-install, search wrapper | available (unexercised) |
+| `configure-search.sh` / `refresh-search.sh` / `search-wiki.sh` | Linux helpers: model-free QMD config, index refresh (never embeddings), search wrapper over `search_lexical.py` | operational |
+| `configure-search.ps1` / `refresh-search.ps1` / `search-wiki.ps1` / `verify-install.ps1` | Windows helpers: same model-free QMD config/refresh/search plus verify-install; `-WithEmbeddings` is an explicit opt-in | available (unexercised) |
 
 The capture core, MCP server, and validators are instance-agnostic: IDs use
 the instance prefix set by `instantiate.py`.
