@@ -6,8 +6,11 @@ _proposals/generated/
 .pytest_cache/
 scripts/__pycache__/
 scripts/capture/__pycache__/
-scripts/capture/tests/
-scripts/capture/fixtures/
+**/__pycache__/
+.venv/
+venv/
+# capture tests/fixtures are tracked; only private/real media stays local
+scripts/capture/fixtures/private/
 *.pyc
 
 # Proposals log is a runtime queue (durable state lives in adjudicated records)
@@ -24,6 +27,7 @@ scripts/capture/fixtures/
 # Secrets and machine-specific config
 .env
 .env.*
+!.env.example
 *.local.json
 
 # OS noise

@@ -95,6 +95,29 @@ FIELD_ORDER = ["id", "type", "title", "status", "capture_kind", "captured_at",
 BODY_SECTIONS = ["User-supplied text", "Literal transcript or extraction",
                  "Machine description", "Review notes", "Provenance events"]
 
+# --- Additive K4 (Agent D). Everything below is OPTIONAL: legacy records that
+# lack these fields/sections stay valid and re-render byte-identically.
+# schema_version stays 1.0.0 (unknown-field-tolerant readers, spec note).
+OPTIONAL_FIELD_ORDER = ["interpretation_needs", "derivative_methods", "derivative_tier"]
+INTERPRETATION_SECTION = "Interpretation (candidate)"
+OPTIONAL_SECTIONS = [INTERPRETATION_SECTION]   # rendered only when non-empty
+LITERAL_SECTION = "Literal transcript or extraction"
+DESCRIPTION_SECTION = "Machine description"
+
+NEEDS_TRANSCRIPTION = "needs_transcription"
+NEEDS_DESCRIPTION = "needs_description"
+NEEDS_INTERPRETATION = "needs_interpretation"
+NEEDS_VOCAB = (NEEDS_TRANSCRIPTION, NEEDS_DESCRIPTION, NEEDS_INTERPRETATION)
+LITERAL_KINDS = {"voice", "handwriting", "mixed"}          # literal layer expected
+DESCRIPTION_KINDS = {"image", "drawing", "handwriting", "mixed"}
+
+DERIVATIVE_LAYERS = {"literal": LITERAL_SECTION,
+                     "description": DESCRIPTION_SECTION,
+                     "interpretation": INTERPRETATION_SECTION}
+CLAUDE_METHOD = "claude"
+DERIVATIVE_TIER = "candidate"
+DERIVATIVE_METHOD_RE = re.compile(r"^(literal|description|interpretation):[A-Za-z0-9._-]+$")
+
 
 def _yaml_val(v) -> str:
     if v is None:
@@ -105,6 +128,8 @@ def _yaml_val(v) -> str:
         return str(v)
     if isinstance(v, list):
         return "[" + ", ".join(_yaml_val(x) for x in v) + "]"
+    if isinstance(v, dict):
+        return json.dumps(v, ensure_ascii=False)
     s = str(v)
     if s == "" or any(c in s for c in ":#[]{}&*?|->!%@`,\"' \t\n"):
         return json.dumps(s, ensure_ascii=False)
@@ -135,36 +160,142 @@ def _yaml_parse_val(s: str):
         return s
 
 
-def parse_record_text(text: str):
-    """Split a capture record into (front_matter_dict, body_sections_dict)."""
-    if not text.startswith("---\n"):
-        raise CaptureError("E_BAD_RECORD", "record does not start with front matter")
-    end = text.find("\n---", 4)
-    if end == -1:
-        raise CaptureError("E_BAD_RECORD", "front matter not closed")
-    fm = {}
-    for line in text[4:end].splitlines():
+# --- Record body encoding (integration fix for DEFECT-1, backward compatible).
+# A body line that starts with "##" could be read back as a section header and
+# a later rewrite would then lose user text. The writer therefore escapes every
+# content line matching ^\\*## by prefixing one backslash, and the reader
+# removes exactly one. The field below is written only when at least one line
+# needed escaping, so records without such lines (all legacy records, almost
+# all new ones) keep their exact legacy bytes. Readers reject unknown values.
+BODY_ENCODING_FIELD = "body_encoding"
+BODY_ENCODING_ESCAPED = "escaped-headings-v1"
+_HEADING_LIKE = re.compile(r"^(\\*)##")
+_ESCAPED_HEADING = re.compile(r"^\\(\\*##)")
+_KNOWN_FIELDS = set(FIELD_ORDER) | set(OPTIONAL_FIELD_ORDER)
+
+
+class FrontMatter(dict):
+    """Front-matter mapping that remembers the raw text of keys this writer
+    does not know (DEFECT-3), so a rewrite re-emits them verbatim instead of
+    dropping a newer or parallel writer's fields."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.raw_extra: dict[str, tuple[str, object]] = {}   # key -> (raw, parsed)
+        self.ambiguous: list[str] = []
+
+
+def _lines(text: str) -> list[str]:
+    """Split on LF only, keeping terminators. str.splitlines() also splits on
+    \\r, \\x0b, \\x85, \\u2028 ... which would let such characters inside user
+    text create a fake line start; CR stays part of the line (DEFECT-2)."""
+    parts = text.split("\n")
+    out = [ln + "\n" for ln in parts[:-1]]
+    if parts[-1]:
+        out.append(parts[-1])
+    return out
+
+
+def _needs_escape(content: str) -> bool:
+    return any(_HEADING_LIKE.match(ln) for ln in _lines(content))
+
+
+def _escape_body(content: str) -> str:
+    return "".join("\\" + ln if _HEADING_LIKE.match(ln) else ln for ln in _lines(content))
+
+
+def _unescape_body(content: str) -> str:
+    return "".join(ln[1:] if _ESCAPED_HEADING.match(ln) else ln for ln in _lines(content))
+
+
+def _parse_extra_value(key: str, raw: str):
+    try:
+        import yaml  # PyYAML is a baseline requirement; stay importable without it
+        v = yaml.safe_load(raw)
+        if isinstance(v, dict) and key in v:
+            return v[key]
+    except Exception:  # noqa: BLE001 - value stays available as text
+        pass
+    return raw.split(":", 1)[1].strip()
+
+
+def _parse_front_matter(block: str) -> FrontMatter:
+    fm = FrontMatter()
+    entries: list[list[str]] = []
+    for line in block.split("\n"):
         if not line.strip() or line.strip().startswith("#"):
+            if entries and line.strip() and line[:1] in (" ", "\t"):
+                entries[-1].append(line)   # comment inside a nested value
+            continue
+        if line[:1] in (" ", "\t") or line.startswith("- "):
+            if not entries:
+                raise CaptureError("E_BAD_RECORD", f"bad front matter line: {line!r}")
+            entries[-1].append(line)       # continuation of a block value
             continue
         if ":" not in line:
             raise CaptureError("E_BAD_RECORD", f"bad front matter line: {line!r}")
-        k, v = line.split(":", 1)
-        fm[k.strip()] = _yaml_parse_val(v)
+        entries.append([line])
+    for ent in entries:
+        k, v = ent[0].split(":", 1)
+        k = k.strip()
+        if k in _KNOWN_FIELDS and len(ent) == 1:
+            fm[k] = _yaml_parse_val(v)
+        else:
+            raw = "\n".join(ent)
+            fm[k] = _parse_extra_value(k, raw) if (len(ent) > 1 or k not in _KNOWN_FIELDS) \
+                else _yaml_parse_val(v)
+            if k not in _KNOWN_FIELDS:
+                fm.raw_extra[k] = (raw, fm[k])
+    return fm
+
+
+def parse_record_text(text: str):
+    """Split a capture record into (front_matter, body_sections).
+
+    Exact: CR bytes are preserved (callers must read with newline="" or
+    read_record_file), escaped heading lines are unescaped, unknown
+    front-matter keys are kept (FrontMatter.raw_extra)."""
+    if not text.startswith("---\n"):
+        raise CaptureError("E_BAD_RECORD", "record does not start with front matter")
+    end = text.find("\n---\n", 3)
+    if end == -1:
+        end = text.find("\n---", 3)
+    if end == -1:
+        raise CaptureError("E_BAD_RECORD", "front matter not closed")
+    fm = _parse_front_matter(text[4:end])
+    encoding = fm.get(BODY_ENCODING_FIELD)
+    if encoding not in (None, BODY_ENCODING_ESCAPED):
+        raise CaptureError("E_BAD_RECORD", f"unknown body_encoding: {encoding!r}")
+    escaped = encoding == BODY_ENCODING_ESCAPED
+    names = BODY_SECTIONS + OPTIONAL_SECTIONS
     body = text[end + 4:]
     sections: dict[str, str] = {}
+    order: list[str] = []
     cur = None
     buf: list[str] = []
-    for line in body.splitlines(keepends=True):
-        m = re.match(r"^## (.+?)\s*$", line)
-        if m and m.group(1) in BODY_SECTIONS:
+    for line in _lines(body):
+        if escaped:
+            name = line[3:-1] if line.startswith("## ") and line.endswith("\n") else None
+            is_header = name in names
+        else:
+            m = re.match(r"^## (.+?)[ \t]*\n?$", line)
+            name = m.group(1) if m else None
+            is_header = name in names
+        if is_header:
             if cur is not None:
                 sections[cur] = "".join(buf)
-            cur = m.group(1)
+            if name in sections or name == cur:
+                fm.ambiguous.append(f"section {name!r} appears more than once")
+            cur = name
+            order.append(name)
             buf = []
         elif cur is not None:
             buf.append(line)
     if cur is not None:
         sections[cur] = "".join(buf)
+    expected = [n for n in names if n in order]
+    if order != expected:
+        fm.ambiguous.append("sections out of canonical order")
     # Render emits one blank line after each ## header and one separator blank
     # line before the next header. The writer invariant is that stored bodies
     # end with exactly one newline, so strip one leading and (when the body
@@ -174,25 +305,46 @@ def parse_record_text(text: str):
             v = v[1:]
         if v.endswith("\n\n"):
             v = v[:-1]
-        sections[k] = v
+        sections[k] = _unescape_body(v) if escaped else v
     return fm, sections
 
 
 def render_record(fm: dict, sections: dict) -> str:
+    present = BODY_SECTIONS + [o for o in OPTIONAL_SECTIONS if sections.get(o, "").strip()]
+    escape = any(_needs_escape(sections.get(s, "") or "") for s in present)
     lines = ["---"]
     for k in FIELD_ORDER:
         lines.append(f"{k}: {_yaml_val(fm.get(k))}")
+    for k in OPTIONAL_FIELD_ORDER:
+        if k in fm:
+            lines.append(f"{k}: {_yaml_val(fm.get(k))}")
+    if escape:
+        lines.append(f"{BODY_ENCODING_FIELD}: {BODY_ENCODING_ESCAPED}")
+    raw_extra = getattr(fm, "raw_extra", {})
+    for k, v in fm.items():
+        if k in _KNOWN_FIELDS or k == BODY_ENCODING_FIELD:
+            continue
+        raw = raw_extra.get(k)
+        lines.append(raw[0] if raw is not None and raw[1] == v else f"{k}: {_yaml_val(v)}")
     lines.append("---")
     lines.append("# Capture")
     lines.append("")
-    for s in BODY_SECTIONS:
+    for s in present:
         lines.append(f"## {s}")
         lines.append("")
         content = sections.get(s, "")
         if content:
+            if escape:
+                content = _escape_body(content)
             lines.append(content.rstrip("\n"))
             lines.append("")
     return "\n".join(lines)
+
+
+def read_record_file(p: Path) -> str:
+    """Read a record without newline translation (DEFECT-2)."""
+    with open(p, "r", encoding="utf-8", newline="") as fh:
+        return fh.read()
 
 
 # ------------------------------------------------------------------- helpers
@@ -223,7 +375,7 @@ def media_path(capture_id: str, suffix: str) -> Path:
 
 
 def _canon(p: Path) -> str:
-    """Canonical comparison key: normcase + realpath, with the Win32
+    r"""Canonical comparison key: normcase + realpath, with the Win32
     extended-path (\\?\) prefix stripped. Needed because concurrent
     resolve() calls on Windows can return prefixed and plain forms
     for paths under the same tree, breaking relative_to()."""
@@ -269,15 +421,21 @@ def _atomic_write_bytes(dest: Path, data: bytes) -> None:
         raise
 
 
-def _scan_records():
-    """Yield (path, front_matter) for every capture record. Deterministic."""
+def _scan_records_full():
+    """Yield (path, front_matter, sections) for every record. Deterministic."""
     if not CAPTURES_ROOT.exists():
         return
     for p in sorted(CAPTURES_ROOT.rglob("cap-*.md")):
         try:
-            fm, _ = parse_record_text(p.read_text(encoding="utf-8"))
+            fm, sections = parse_record_text(read_record_file(p))
         except (OSError, UnicodeError, CaptureError):
             continue
+        yield p, fm, sections
+
+
+def _scan_records():
+    """Yield (path, front_matter) for every capture record. Deterministic."""
+    for p, fm, _ in _scan_records_full():
         yield p, fm
 
 
@@ -303,6 +461,49 @@ def _event_line(action: str, outcome: str, detail: str) -> str:
 
 def _blank_sections() -> dict:
     return {s: "" for s in BODY_SECTIONS}
+
+
+# ------------------------------------------- interpretation gaps (additive K4)
+
+def interpretation_gaps(fm: dict, sections: dict) -> list[str]:
+    """What a Claude/manual pass still owes this capture. Pure function of the
+    record, so legacy records without `interpretation_needs` get a correct
+    answer. Rules:
+      needs_transcription   voice/handwriting/mixed with an empty literal layer
+      needs_description     image/drawing/handwriting/mixed with an empty description
+      needs_interpretation  only when explicitly requested (request_interpretation)
+                            and no interpretation text exists yet
+    Text captures are their own literal layer and never need transcription."""
+    kind = fm.get("capture_kind")
+    needs: list[str] = []
+    if kind in LITERAL_KINDS and not sections.get(LITERAL_SECTION, "").strip():
+        needs.append(NEEDS_TRANSCRIPTION)
+    if kind in DESCRIPTION_KINDS and not sections.get(DESCRIPTION_SECTION, "").strip():
+        needs.append(NEEDS_DESCRIPTION)
+    stored = fm.get("interpretation_needs")
+    if (isinstance(stored, list) and NEEDS_INTERPRETATION in stored
+            and not sections.get(INTERPRETATION_SECTION, "").strip()):
+        needs.append(NEEDS_INTERPRETATION)
+    return needs
+
+
+def _refresh_needs(fm: dict, sections: dict) -> None:
+    """Snapshot the gaps into front matter. Only writers call this."""
+    fm["interpretation_needs"] = interpretation_gaps(fm, sections)
+
+
+def _note_derivative(fm: dict, layer: str, method: str) -> None:
+    methods = [m for m in (fm.get("derivative_methods") or [])
+               if not str(m).startswith(layer + ":")]
+    methods.append(f"{layer}:{method}")
+    fm["derivative_methods"] = sorted(methods)
+    fm["derivative_tier"] = DERIVATIVE_TIER
+
+
+def _reject_claude_on_legacy_path(adapter: str) -> None:
+    if str(adapter).strip().lower() == CLAUDE_METHOD:
+        raise CaptureError("E_USE_CLAUDE_DERIVATIVE",
+                           "Claude output must go through record_claude_derivative()")
 
 
 # ------------------------------------------------------------------ creation
@@ -341,6 +542,7 @@ def capture_text(text: str, channel: str, language_hint: str = "unknown") -> dic
           "schema_version": CAPTURE_SCHEMA_VERSION}
     if dup:
         sections["Provenance events"] += _event_line("duplicate-of", "ok", dup) + "\n"
+    _refresh_needs(fm, sections)
     dest = _finalize_record(fm, sections)
     return {"ok": True, "id": cid, "status": "received", "path": _repo_rel(dest),
             "sha256": digest, "bytes": fm["bytes"], "duplicate_of": dup,
@@ -400,6 +602,7 @@ def capture_media(src: str, kind: str, channel: str,
               "schema_version": CAPTURE_SCHEMA_VERSION}
         if dup:
             sections["Provenance events"] += _event_line("duplicate-of", "ok", dup) + "\n"
+        _refresh_needs(fm, sections)
         dest = _finalize_record(fm, sections)
     except BaseException:
         try:
@@ -423,7 +626,25 @@ def _load(capture_id: str):
     _safe_within(p, CAPTURES_ROOT)
     if not p.is_file():
         raise CaptureError("E_NOT_FOUND", f"no such capture: {capture_id}")
-    return p, parse_record_text(p.read_text(encoding="utf-8"))
+    return p, parse_record_text(read_record_file(p))
+
+
+def _load_for_rewrite(capture_id: str):
+    """Load a record that is about to be rewritten. Refuses (and so preserves
+    the bytes on disk) when the body cannot be parsed unambiguously: a legacy
+    record whose user text already contains a reserved heading line would
+    otherwise be split wrongly and lose text on the rewrite (DEFECT-1)."""
+    p, (fm, sections) = _load(capture_id)
+    problems = list(getattr(fm, "ambiguous", []))
+    if fm.get("capture_kind") == "text" and not fm.get("raw_media"):
+        body = sections.get("User-supplied text", "")
+        if hashlib.sha256(body.encode("utf-8")).hexdigest() != fm.get("sha256"):
+            problems.append("user text does not match its recorded sha256")
+    if problems:
+        raise CaptureError("E_AMBIGUOUS_RECORD",
+                           f"{capture_id}: refusing to rewrite ({'; '.join(problems)}); "
+                           "the file is untouched, repair it by hand")
+    return p, (fm, sections)
 
 
 def read_capture(capture_id: str) -> dict:
@@ -433,9 +654,12 @@ def read_capture(capture_id: str) -> dict:
 
 
 def list_captures(state: str | None = None, kind: str | None = None,
-                  channel: str | None = None, since: str | None = None) -> dict:
+                  channel: str | None = None, since: str | None = None,
+                  needs: str | None = None) -> dict:
+    if needs is not None and needs not in NEEDS_VOCAB:
+        raise CaptureError("E_BAD_NEEDS", f"unknown need: {needs}")
     rows = []
-    for p, fm in _scan_records():
+    for p, fm, sections in _scan_records_full():
         if state and fm.get("status") != state:
             continue
         if kind and fm.get("capture_kind") != kind:
@@ -444,10 +668,13 @@ def list_captures(state: str | None = None, kind: str | None = None,
             continue
         if since and str(fm.get("captured_at", "")) < since:
             continue
+        gaps = interpretation_gaps(fm, sections)
+        if needs and needs not in gaps:
+            continue
         rows.append({"id": fm.get("id"), "status": fm.get("status"),
                      "kind": fm.get("capture_kind"), "channel": fm.get("capture_channel"),
                      "captured_at": fm.get("captured_at"),
-                     "path": _repo_rel(p)})
+                     "path": _repo_rel(p), "interpretation_needs": gaps})
     return {"ok": True, "count": len(rows), "captures": rows}
 
 
@@ -457,7 +684,7 @@ def set_state(capture_id: str, new_state: str, actor: str,
         raise CaptureError("E_BAD_STATE", f"unknown state: {new_state}")
     if not actor.strip():
         raise CaptureError("E_NO_ACTOR", "state changes require a named human actor")
-    p, (fm, sections) = _load(capture_id)
+    p, (fm, sections) = _load_for_rewrite(capture_id)
     cur = fm.get("status")
     if new_state not in TRANSITIONS.get(cur, set()):
         raise CaptureError("E_BAD_TRANSITION", f"illegal transition {cur} -> {new_state}")
@@ -486,7 +713,8 @@ def record_transcript(capture_id: str, text: str, adapter: str, version: str,
                       segments: list | None = None, reviewed: bool = False,
                       quality_flags: list | None = None) -> dict:
     """Store a literal transcript (machine or human-corrected). Never summarizes."""
-    p, (fm, sections) = _load(capture_id)
+    _reject_claude_on_legacy_path(adapter)
+    p, (fm, sections) = _load_for_rewrite(capture_id)
     if fm.get("capture_kind") not in ("voice", "mixed"):
         raise CaptureError("E_WRONG_KIND", "transcripts attach only to voice/mixed captures")
     canonical = text.rstrip("\n") + "\n" if text.strip() else ""
@@ -497,6 +725,8 @@ def record_transcript(capture_id: str, text: str, adapter: str, version: str,
     fm["transcription_method"] = adapter
     fm["transcription_version"] = version
     fm["transcription_reviewed"] = bool(reviewed)
+    _note_derivative(fm, "literal", adapter)
+    _refresh_needs(fm, sections)
     if quality_flags:
         fm["quality_flags"] = sorted(set(fm.get("quality_flags", [])) | set(quality_flags))
     if segments:
@@ -516,7 +746,8 @@ def record_transcript(capture_id: str, text: str, adapter: str, version: str,
 def record_description(capture_id: str, literal: str, description: str,
                        adapter: str, version: str) -> dict:
     """Keep literal visible text and interpretive description strictly separate."""
-    p, (fm, sections) = _load(capture_id)
+    _reject_claude_on_legacy_path(adapter)
+    p, (fm, sections) = _load_for_rewrite(capture_id)
     if fm.get("capture_kind") not in ("handwriting", "drawing", "image", "mixed", "file"):
         raise CaptureError("E_WRONG_KIND", "descriptions attach only to visual/file captures")
     if literal is not None:
@@ -525,11 +756,84 @@ def record_description(capture_id: str, literal: str, description: str,
     if description is not None:
         sections["Machine description"] = (
             description.rstrip("\n") + "\n" if description.strip() else "")
+    if literal is not None and literal.strip():
+        _note_derivative(fm, "literal", adapter)
+    if description is not None and description.strip():
+        _note_derivative(fm, "description", adapter)
+    _refresh_needs(fm, sections)
     events = sections.get("Provenance events", "")
     events += _event_line("described", "ok", f"{adapter} {version}") + "\n"
     sections["Provenance events"] = events
     _atomic_write_bytes(p, render_record(fm, sections).encode("utf-8"))
     return {"ok": True, "id": capture_id, "message": f"description stored ({adapter} {version})"}
+
+
+def record_claude_derivative(capture_id: str, layer: str, text: str,
+                             producer_ref: str = "") -> dict:
+    """Store ONE Claude-produced layer as a candidate derivative.
+
+    Guarantees (Agent D, K4): layer goes only to its own section (literal /
+    description / interpretation never share one); method is recorded as
+    `claude`; tier is `candidate`; never marked human-reviewed; never moves the
+    state machine (state changes need a named human actor); write-once per
+    layer so no earlier text (human, tool or Claude) is ever overwritten.
+    `producer_ref` is an optional free-text pointer (e.g. session link)."""
+    if layer not in DERIVATIVE_LAYERS:
+        raise CaptureError("E_BAD_LAYER", f"layer must be one of {sorted(DERIVATIVE_LAYERS)}")
+    p, (fm, sections) = _load_for_rewrite(capture_id)
+    kind = fm.get("capture_kind")
+    if kind == "text" and layer != "interpretation":
+        raise CaptureError("E_WRONG_KIND",
+                           "a text capture is its own literal layer; only interpretation can attach")
+    if layer == "description" and kind not in ("handwriting", "drawing", "image", "mixed", "file"):
+        raise CaptureError("E_WRONG_KIND", "descriptions attach only to visual/file captures")
+    canonical = text.rstrip("\n") + "\n" if (text or "").strip() else ""
+    if not canonical:
+        raise CaptureError("E_EMPTY", "derivative text is empty")
+    section = DERIVATIVE_LAYERS[layer]
+    if sections.get(section, "").strip():
+        raise CaptureError("E_LAYER_EXISTS",
+                           f"{section!r} already holds text; Claude derivatives never overwrite")
+    ref = re.sub(r"[\r\n|]+", " ", producer_ref).strip()
+    sections[section] = canonical
+    _note_derivative(fm, layer, CLAUDE_METHOD)
+    if layer == "literal" and kind in ("voice", "mixed"):
+        fm["transcription_state"] = "complete"
+        fm["transcription_method"] = CLAUDE_METHOD
+        fm["transcription_version"] = "claude-session"
+        fm["transcription_reviewed"] = False
+    _refresh_needs(fm, sections)
+    events = sections.get("Provenance events", "")
+    events += _event_line(f"derivative:{layer}", "ok",
+                          f"method:{CLAUDE_METHOD} tier:{DERIVATIVE_TIER} reviewed:false"
+                          + (f" ref:{ref}" if ref else "")) + "\n"
+    sections["Provenance events"] = events
+    _atomic_write_bytes(p, render_record(fm, sections).encode("utf-8"))
+    return {"ok": True, "id": capture_id, "layer": layer, "method": CLAUDE_METHOD,
+            "tier": DERIVATIVE_TIER, "human_reviewed": False,
+            "interpretation_needs": fm["interpretation_needs"],
+            "message": f"claude {layer} stored as candidate (unreviewed)"}
+
+
+def request_interpretation(capture_id: str, actor: str) -> dict:
+    """Explicitly ask for an interpretation pass. Needs a named actor; never
+    creates interpretation text and never changes the capture state."""
+    if not (actor or "").strip():
+        raise CaptureError("E_NO_ACTOR", "requesting interpretation needs a named actor")
+    p, (fm, sections) = _load_for_rewrite(capture_id)
+    if sections.get(INTERPRETATION_SECTION, "").strip():
+        raise CaptureError("E_LAYER_EXISTS", "interpretation already recorded")
+    stored = list(fm.get("interpretation_needs") or [])
+    if NEEDS_INTERPRETATION not in stored:
+        stored.append(NEEDS_INTERPRETATION)
+    fm["interpretation_needs"] = stored
+    _refresh_needs(fm, sections)
+    events = sections.get("Provenance events", "")
+    events += _event_line("interpretation-requested", "ok", f"actor:{actor}") + "\n"
+    sections["Provenance events"] = events
+    _atomic_write_bytes(p, render_record(fm, sections).encode("utf-8"))
+    return {"ok": True, "id": capture_id, "interpretation_needs": fm["interpretation_needs"],
+            "message": f"{capture_id}: interpretation requested by {actor}"}
 
 
 # ---------------------------------------------------------------- validation
@@ -548,9 +852,11 @@ def validate_record(capture_id_or_path: str) -> list[str]:
     if not p.is_file():
         return ["E_NOT_FOUND: record file missing"]
     try:
-        fm, sections = parse_record_text(p.read_text(encoding="utf-8"))
+        fm, sections = parse_record_text(read_record_file(p))
     except (OSError, UnicodeError, CaptureError) as e:
         return [f"E_BAD_RECORD: {e}"]
+    for problem in getattr(fm, "ambiguous", []):
+        errors.append(f"E_AMBIGUOUS_BODY: {problem}")
     cid = fm.get("id")
     if not cid or not ID_RE.match(str(cid)):
         errors.append("E_BAD_ID: missing or malformed id")
@@ -608,6 +914,24 @@ def validate_record(capture_id_or_path: str) -> list[str]:
             body_text = sections.get("User-supplied text", "")
             if hashlib.sha256(body_text.encode("utf-8")).hexdigest() != fm.get("sha256"):
                 errors.append("E_HASH_MISMATCH: text bytes do not match recorded sha256")
+    # additive K4 metadata (all optional; legacy records skip every check)
+    needs = fm.get("interpretation_needs")
+    if needs is not None and (not isinstance(needs, list)
+                              or any(n not in NEEDS_VOCAB for n in needs)):
+        errors.append(f"E_BAD_NEEDS: interpretation_needs must be a subset of {list(NEEDS_VOCAB)}")
+    dm = fm.get("derivative_methods")
+    if dm is not None and (not isinstance(dm, list) or any(
+            not isinstance(m, str) or not DERIVATIVE_METHOD_RE.match(m) for m in dm)):
+        errors.append("E_BAD_DERIVATIVE_METHOD: entries must look like 'layer:method'")
+    if "derivative_tier" in fm and fm["derivative_tier"] != DERIVATIVE_TIER:
+        errors.append(f"E_BAD_TIER: derivative_tier must be {DERIVATIVE_TIER!r}")
+    if isinstance(dm, list) and any(str(m).endswith(":" + CLAUDE_METHOD) for m in dm) \
+            and fm.get("derivative_tier") != DERIVATIVE_TIER:
+        errors.append("E_BAD_TIER: claude derivatives must carry derivative_tier=candidate")
+    if sections.get(INTERPRETATION_SECTION, "").strip():
+        layers = {str(m).split(":")[0] for m in (dm or [])}
+        if "interpretation" not in layers:
+            errors.append("E_UNATTRIBUTED_DERIVATIVE: interpretation text has no method")
     # state-path audit from provenance events
     states = ["received"]
     for line in sections.get("Provenance events", "").splitlines():
@@ -717,6 +1041,7 @@ def main(argv: list[str] | None = None) -> int:
     l.add_argument("--state", default=None)
     l.add_argument("--kind", default=None)
     l.add_argument("--channel", default=None)
+    l.add_argument("--needs", default=None, choices=list(NEEDS_VOCAB))
 
     r = sub.add_parser("read")
     r.add_argument("id")
@@ -738,6 +1063,18 @@ def main(argv: list[str] | None = None) -> int:
     ct.add_argument("--text", default=None)
     ct.add_argument("--text-file", default=None)
 
+    ad = sub.add_parser("add-derivative",
+                        help="store a Claude-produced candidate layer (unreviewed)")
+    ad.add_argument("--id", required=True)
+    ad.add_argument("--layer", required=True, choices=sorted(DERIVATIVE_LAYERS))
+    ad.add_argument("--text", default=None)
+    ad.add_argument("--text-file", default=None)
+    ad.add_argument("--producer-ref", default="")
+
+    ri = sub.add_parser("request-interpretation")
+    ri.add_argument("--id", required=True)
+    ri.add_argument("--actor", required=True)
+
     sub.add_parser("recover")
     # Accept --json before or after the subcommand (argparse subparsers
     # only honor parent flags placed before the subcommand word).
@@ -751,11 +1088,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "capture-media":
             return _out(capture_media(args.src, args.kind, args.channel, args.lang), as_json)
         if args.cmd == "list":
-            obj = list_captures(args.state, args.kind, args.channel)
+            obj = list_captures(args.state, args.kind, args.channel, needs=args.needs)
             if as_json:
                 return _out(obj, True)
             for row in obj["captures"]:
-                print(f"{row['id']}  {row['status']:16} {row['kind']:12} {row['captured_at']}")
+                gaps = ",".join(row["interpretation_needs"])
+                print(f"{row['id']}  {row['status']:16} {row['kind']:12} {row['captured_at']}"
+                      + (f"  [{gaps}]" if gaps else ""))
             print(f"{obj['count']} capture(s)")
             return 0
         if args.cmd == "read":
@@ -765,9 +1104,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "commit-transcript":
             text = args.text
             if args.text_file:
-                text = Path(args.text_file).read_text(encoding="utf-8")
+                text = read_record_file(Path(args.text_file))
             return _out(record_transcript(args.id, text or "", args.adapter,
                                           args.version), as_json)
+        if args.cmd == "add-derivative":
+            text = args.text
+            if args.text_file:
+                text = read_record_file(Path(args.text_file))
+            return _out(record_claude_derivative(args.id, args.layer, text or "",
+                                                 args.producer_ref), as_json)
+        if args.cmd == "request-interpretation":
+            return _out(request_interpretation(args.id, args.actor), as_json)
         if args.cmd == "validate":
             if args.id_or_path:
                 errs = validate_record(args.id_or_path)

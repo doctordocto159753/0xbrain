@@ -1,0 +1,139 @@
+{
+ "id": "07-deep-reconciliation-pagination",
+ "title": "Deep reconciliation with pagination",
+ "standing_rule": "7 Conflict and reconciliation",
+ "user_prompt": "Everything in the archive touching Project Nil: does the new draft change any of it?",
+ "setup": {
+  "records": [
+   {
+    "id": "obj-nil",
+    "title": "Project Nil",
+    "zone": "03-objects",
+    "level": 4,
+    "text": "Project Nil is the working title of the second novel. Decision of 2026-03: the title stays 'Nil' until the manuscript is complete."
+   },
+   {
+    "id": "clm-nil",
+    "title": "Nil title claim",
+    "zone": "05-claims",
+    "level": 4,
+    "text": "Claim: the novel's title is fixed as 'Nil' (permission: may-describe).",
+    "edges": [
+     "obj-nil"
+    ]
+   },
+   {
+    "id": "n00",
+    "title": "Note 0",
+    "zone": "04-notes",
+    "level": 6,
+    "text": "Note 0 on Nil.",
+    "edges": [
+     "obj-nil"
+    ]
+   },
+   {
+    "id": "n01",
+    "title": "Note 1",
+    "zone": "04-notes",
+    "level": 6,
+    "text": "Note 1 on Nil.",
+    "edges": [
+     "obj-nil"
+    ]
+   },
+   {
+    "id": "n02",
+    "title": "Note 2",
+    "zone": "04-notes",
+    "level": 6,
+    "text": "Note 2 on Nil.",
+    "edges": [
+     "obj-nil"
+    ]
+   },
+   {
+    "id": "n03",
+    "title": "Note 3",
+    "zone": "04-notes",
+    "level": 6,
+    "text": "Note 3 on Nil.",
+    "edges": [
+     "obj-nil"
+    ]
+   },
+   {
+    "id": "n04",
+    "title": "Note 4",
+    "zone": "04-notes",
+    "level": 6,
+    "text": "Note 4 on Nil.",
+    "edges": [
+     "obj-nil"
+    ]
+   },
+   {
+    "id": "n05",
+    "title": "Note 5",
+    "zone": "04-notes",
+    "level": 6,
+    "text": "Note 5 on Nil.",
+    "edges": [
+     "obj-nil"
+    ]
+   },
+   {
+    "id": "n06",
+    "title": "Note 6",
+    "zone": "04-notes",
+    "level": 6,
+    "text": "Note 6 on Nil.",
+    "edges": [
+     "obj-nil"
+    ]
+   }
+  ]
+ },
+ "reference_calls": [
+  {
+   "tool": "brain_reconcile_context",
+   "args": {
+    "seed_ref": "rec:obj-nil",
+    "depth": "deep"
+   },
+   "expect": {
+    "ok": true,
+    "truncated": false,
+    "next_cursor": "!null",
+    "sections.canonical_records.total": ">=7"
+   },
+   "save_cursor": true
+  },
+  {
+   "tool": "brain_reconcile_context",
+   "args": {
+    "seed_ref": "rec:obj-nil",
+    "depth": "deep",
+    "cursor": "$cursor"
+   },
+   "expect": {
+    "ok": true,
+    "truncated": false,
+    "next_cursor": null
+   }
+  }
+ ],
+ "forbidden_tools": [
+  "brain_capture"
+ ],
+ "reference_reply": "I paged through both pages of the deep package (8 canonical records, 1 claim; total vs returned matched at the end, next_cursor null). Candidate reading: no direct conflict, but rec:clm-nil should be re-checked against the draft.",
+ "reply_must_match": [
+  "(?i)both pages",
+  "next_cursor"
+ ],
+ "reply_must_not_match": [
+  "(?i)the server (confirmed|decided)"
+ ],
+ "page_limit": 5,
+ "notes": "Paging is not truncation: truncated stays false (it is reserved for safety bounds, with truncation_reason); more data is signalled by a non-null next_cursor."
+}

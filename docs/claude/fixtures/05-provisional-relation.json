@@ -1,0 +1,77 @@
+{
+ "id": "05-provisional-relation",
+ "title": "Provisional relation before type",
+ "standing_rule": "6 Relations, claims, history",
+ "user_prompt": "I think Project Nil and the Kolan letters are connected, but I can't say how yet.",
+ "setup": {
+  "records": [
+   {
+    "id": "obj-nil",
+    "title": "Project Nil",
+    "zone": "03-objects",
+    "level": 4,
+    "text": "Project Nil is the working title of the second novel. Decision of 2026-03: the title stays 'Nil' until the manuscript is complete."
+   },
+   {
+    "id": "clm-nil",
+    "title": "Nil title claim",
+    "zone": "05-claims",
+    "level": 4,
+    "text": "Claim: the novel's title is fixed as 'Nil' (permission: may-describe).",
+    "edges": [
+     "obj-nil"
+    ]
+   },
+   {
+    "id": "src-kolan",
+    "title": "Kolan letters",
+    "zone": "02-sources",
+    "level": 4,
+    "text": "The Kolan letters (1998) discuss a manuscript called 'Nil' in passing, with no further detail."
+   }
+  ]
+ },
+ "reference_calls": [
+  {
+   "tool": "brain_search",
+   "args": {
+    "query": "Kolan",
+    "scope": "canonical"
+   },
+   "expect": {
+    "ok": true
+   }
+  },
+  {
+   "tool": "brain_propose",
+   "args": {
+    "kind": "relation-edge",
+    "structured_fields": {
+     "target_id": "src-kolan",
+     "proposed_type": "unclassified",
+     "why": "Owner suspects a connection between Project Nil (obj-nil) and the Kolan letters; both mention 'Nil'. Type unknown; candidate, may-note strength only."
+    },
+    "evidence_refs": [
+     {
+      "ref": "rec:src-kolan",
+      "quote": "discuss a manuscript called 'Nil' in passing"
+     }
+    ]
+   },
+   "expect": {
+    "ok": true,
+    "status": "new"
+   }
+  }
+ ],
+ "forbidden_tools": [],
+ "reference_reply": "Filed prop:prop-fake-0001 as an unclassified, candidate relation (may-note strength): both records mention 'Nil'. I did not type the connection; that needs more evidence.",
+ "reply_must_match": [
+  "prop:prop-fake-0001",
+  "(?i)unclassified"
+ ],
+ "reply_must_not_match": [
+  "(?i)influence",
+  "(?i)is derived from"
+ ]
+}

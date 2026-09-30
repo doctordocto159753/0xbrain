@@ -1,0 +1,6 @@
+# Build context is intentionally tiny: only what the image itself needs.
+*
+!requirements.txt
+!requirements-remote.txt
+!deploy/
+deploy/tests/

@@ -1,0 +1,879 @@
+{
+ "schema_version": "1.0.0",
+ "corpus": "tests/search_eval/corpus (synthetic; suffix .md.fixture is stripped on materialisation)",
+ "purpose": "Regression and characterisation set for the model-free lexical path. It measures the search mechanism on a small synthetic corpus written by the same author as the queries; it is NOT an estimate of recall on a real corpus (upstream measured 3/30 lexical recall on natural-language questions over a real instance).",
+ "categories": [
+  "persian",
+  "english",
+  "mixed",
+  "title_id",
+  "concept",
+  "claim",
+  "relation",
+  "source",
+  "capture",
+  "orthography",
+  "exact",
+  "paraphrase",
+  "negative"
+ ],
+ "cases": [
+  {
+   "id": "fa-01",
+   "category": "persian",
+   "query": "حافظه جمعی",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0001.md"
+   ]
+  },
+  {
+   "id": "fa-02",
+   "category": "persian",
+   "query": "تاریخ شفاهی",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0002.md"
+   ]
+  },
+  {
+   "id": "fa-03",
+   "category": "persian",
+   "query": "آرشیویست",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0004.md"
+   ]
+  },
+  {
+   "id": "fa-04",
+   "category": "persian",
+   "query": "مصاحبه\u200cها",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0002.md",
+    "03-objects/OBJ-0008.md"
+   ],
+   "note": "query carries ZWNJ"
+  },
+  {
+   "id": "fa-05",
+   "category": "persian",
+   "query": "فهرست\u200cنویسی نسخه\u200cهای خطی",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0004.md"
+   ]
+  },
+  {
+   "id": "fa-06",
+   "category": "persian",
+   "query": "مقابله سطر به سطر",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "04-notes/NOTE-0002.md"
+   ]
+  },
+  {
+   "id": "fa-07",
+   "category": "persian",
+   "query": "شماره\u200cی برگ",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "04-notes/NOTE-0002.md"
+   ]
+  },
+  {
+   "id": "fa-08",
+   "category": "persian",
+   "query": "پروژه\u200cی کویر",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0008.md",
+    "03-objects/OBJ-0004.md"
+   ]
+  },
+  {
+   "id": "en-01",
+   "category": "english",
+   "query": "Kavir Project",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0008.md",
+    "03-objects/OBJ-0003.md"
+   ]
+  },
+  {
+   "id": "en-02",
+   "category": "english",
+   "query": "provenance tracing",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0007.md"
+   ]
+  },
+  {
+   "id": "en-03",
+   "category": "english",
+   "query": "finding aid",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0007.md",
+    "04-notes/NOTE-0003.md"
+   ]
+  },
+  {
+   "id": "en-04",
+   "category": "english",
+   "query": "oral testimony archives",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0003.md"
+   ]
+  },
+  {
+   "id": "en-05",
+   "category": "english",
+   "query": "Sepid Institute",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0005.md",
+    "03-objects/OBJ-0003.md"
+   ]
+  },
+  {
+   "id": "en-06",
+   "category": "english",
+   "query": "lexical rank orders attention",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "04-notes/NOTE-0001.md"
+   ]
+  },
+  {
+   "id": "en-07",
+   "category": "english",
+   "query": "digitised copy authorship",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0004.md"
+   ]
+  },
+  {
+   "id": "mx-01",
+   "category": "mixed",
+   "query": "Manuscript B نسخه",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0003.md",
+    "06-relations/REL-0003.md"
+   ]
+  },
+  {
+   "id": "mx-02",
+   "category": "mixed",
+   "query": "مصاحبه archivists",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "04-notes/NOTE-0003.md"
+   ]
+  },
+  {
+   "id": "mx-03",
+   "category": "mixed",
+   "query": "Kaviani مصاحبه",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0003.md",
+    "04-notes/NOTE-0003.md"
+   ],
+   "note": "terms never co-occur in one canonical record: strict AND is empty, the any-term step must surface partial matches and label the strategy"
+  },
+  {
+   "id": "mx-04",
+   "category": "mixed",
+   "query": "finding aid فهرست\u200cنویسی",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "04-notes/NOTE-0003.md"
+   ]
+  },
+  {
+   "id": "mx-05",
+   "category": "mixed",
+   "query": "Sepid مؤسسه\u200cی",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0005.md"
+   ]
+  },
+  {
+   "id": "id-01",
+   "category": "title_id",
+   "query": "OBJ-0003",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0003.md",
+    "06-relations/REL-0001.md"
+   ]
+  },
+  {
+   "id": "id-02",
+   "category": "title_id",
+   "query": "CLM-0004",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0004.md"
+   ]
+  },
+  {
+   "id": "id-03",
+   "category": "title_id",
+   "query": "SRC-0001",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0001.md",
+    "05-claims/CLM-0001.md"
+   ]
+  },
+  {
+   "id": "id-04",
+   "category": "title_id",
+   "query": "kavir-interviews-box3.pdf",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0001.md"
+   ]
+  },
+  {
+   "id": "id-05",
+   "category": "title_id",
+   "query": "annual-report-1402.pdf",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0002.md"
+   ]
+  },
+  {
+   "id": "id-06",
+   "category": "title_id",
+   "query": "REL-0002",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "06-relations/REL-0002.md"
+   ]
+  },
+  {
+   "id": "id-07",
+   "category": "title_id",
+   "query": "Interview transcript box 3",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0001.md",
+    "02-sources/text/DER-0001.md"
+   ]
+  },
+  {
+   "id": "cn-01",
+   "category": "concept",
+   "query": "collective memory",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0001.md"
+   ]
+  },
+  {
+   "id": "cn-02",
+   "category": "concept",
+   "query": "oral history",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0001.md"
+   ]
+  },
+  {
+   "id": "cn-03",
+   "category": "concept",
+   "query": "narrative reconstruction",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0001.md"
+   ]
+  },
+  {
+   "id": "cn-04",
+   "category": "concept",
+   "query": "بازسازی روایت",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0001.md"
+   ]
+  },
+  {
+   "id": "cl-01",
+   "category": "claim",
+   "query": "interviews recorded 2019",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0001.md"
+   ]
+  },
+  {
+   "id": "cl-02",
+   "category": "claim",
+   "query": "digitisation authorship",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0004.md"
+   ]
+  },
+  {
+   "id": "cl-03",
+   "category": "claim",
+   "query": "شاهدان روایت\u200cها حفظ",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0002.md"
+   ]
+  },
+  {
+   "id": "cl-04",
+   "category": "claim",
+   "query": "Manuscript B later than Manuscript A",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0003.md"
+   ]
+  },
+  {
+   "id": "rl-01",
+   "category": "relation",
+   "query": "led-by",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "06-relations/REL-0001.md"
+   ]
+  },
+  {
+   "id": "rl-02",
+   "category": "relation",
+   "query": "derived-from",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "06-relations/REL-0003.md"
+   ]
+  },
+  {
+   "id": "rl-03",
+   "category": "relation",
+   "query": "وابستگی",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "06-relations/REL-0002.md"
+   ]
+  },
+  {
+   "id": "rl-04",
+   "category": "relation",
+   "query": "Rahimi directs Kavir",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "06-relations/REL-0001.md"
+   ]
+  },
+  {
+   "id": "sr-01",
+   "category": "source",
+   "query": "ferry schedule",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0001.md"
+   ],
+   "absent": [
+    "01-inbox/captures/CAP-0002.md"
+   ]
+  },
+  {
+   "id": "sr-02",
+   "category": "source",
+   "query": "salt market ledger",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0001.md"
+   ]
+  },
+  {
+   "id": "sr-03",
+   "category": "source",
+   "query": "rahimi-kaviani-letter.jpg",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0003.md"
+   ]
+  },
+  {
+   "id": "sr-04",
+   "category": "source",
+   "query": "گزارش سالانه ۱۴۰۲",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0002.md",
+    "02-sources/text/DER-0005.md"
+   ]
+  },
+  {
+   "id": "sr-05",
+   "category": "source",
+   "query": "Handwritten exact wording original image",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0003.md"
+   ]
+  },
+  {
+   "id": "cp-01",
+   "category": "capture",
+   "query": "حافظه جمعی",
+   "scope": "captures",
+   "mode": "lexical",
+   "expect": [
+    "01-inbox/captures/CAP-0001.md"
+   ],
+   "absent": [
+    "03-objects/OBJ-0001.md"
+   ]
+  },
+  {
+   "id": "cp-02",
+   "category": "capture",
+   "query": "ferry schedule",
+   "scope": "captures",
+   "mode": "lexical",
+   "expect": [
+    "01-inbox/captures/CAP-0002.md"
+   ],
+   "absent": [
+    "02-sources/text/DER-0001.md"
+   ]
+  },
+  {
+   "id": "cp-03",
+   "category": "capture",
+   "query": "Sepid Institute",
+   "scope": "captures",
+   "mode": "lexical",
+   "expect": [
+    "01-inbox/captures/CAP-0003.md"
+   ],
+   "absent": [
+    "03-objects/OBJ-0005.md"
+   ]
+  },
+  {
+   "id": "cp-04",
+   "category": "capture",
+   "query": "نسخه\u200cی B",
+   "scope": "captures",
+   "mode": "lexical",
+   "expect": [
+    "01-inbox/captures/CAP-0004.md"
+   ],
+   "absent": [
+    "05-claims/CLM-0003.md"
+   ]
+  },
+  {
+   "id": "cp-05",
+   "category": "capture",
+   "query": "حافظه جمعی",
+   "scope": "all",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0001.md",
+    "01-inbox/captures/CAP-0001.md"
+   ],
+   "note": "scope=all: both groups present, never merged"
+  },
+  {
+   "id": "or-01",
+   "category": "orthography",
+   "query": "کتابخانه قدیمی",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0002.md"
+   ],
+   "note": "doc uses Arabic kaf/yeh; query Persian"
+  },
+  {
+   "id": "or-02",
+   "category": "orthography",
+   "query": "ويرايش نسخه",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0002.md"
+   ],
+   "note": "Arabic yeh query, Arabic doc"
+  },
+  {
+   "id": "or-03",
+   "category": "orthography",
+   "query": "ویرایش نسخه",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0002.md"
+   ],
+   "note": "Persian yeh query, Arabic doc"
+  },
+  {
+   "id": "or-04",
+   "category": "orthography",
+   "query": "محمد",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0003.md"
+   ],
+   "note": "doc is vocalised; QMD tokenizer splits on harakat",
+   "known_limit": "harakat-indexed-text"
+  },
+  {
+   "id": "or-05",
+   "category": "orthography",
+   "query": "محمد",
+   "scope": "canonical",
+   "mode": "exact",
+   "expect": [
+    "02-sources/text/DER-0003.md"
+   ],
+   "note": "exact fallback folds harakat"
+  },
+  {
+   "id": "or-06",
+   "category": "orthography",
+   "query": "کتابها",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0004.md"
+   ],
+   "note": "joined plural vs ZWNJ in doc (solved by the persian-stem-prefix step)"
+  },
+  {
+   "id": "or-07",
+   "category": "orthography",
+   "query": "می\u200cخواهم",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0004.md"
+   ],
+   "note": "ZWNJ in query"
+  },
+  {
+   "id": "or-08",
+   "category": "orthography",
+   "query": "1402",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0002.md",
+    "02-sources/text/DER-0005.md"
+   ],
+   "note": "ASCII digits vs Persian digits"
+  },
+  {
+   "id": "or-09",
+   "category": "orthography",
+   "query": "۱۳۹۸",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/records/SRC-0003.md"
+   ]
+  },
+  {
+   "id": "or-10",
+   "category": "orthography",
+   "query": "450",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0005.md"
+   ],
+   "note": "ASCII digits, doc has ۴۵۰"
+  },
+  {
+   "id": "or-11",
+   "category": "orthography",
+   "query": "۲۰۱۹",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0001.md",
+    "02-sources/text/DER-0004.md"
+   ],
+   "note": "Persian digits, docs ASCII"
+  },
+  {
+   "id": "or-12",
+   "category": "orthography",
+   "query": "كتاب",
+   "scope": "canonical",
+   "mode": "exact",
+   "expect": [
+    "02-sources/text/DER-0002.md",
+    "02-sources/text/DER-0004.md"
+   ],
+   "note": "exact folds Arabic kaf and ZWNJ"
+  },
+  {
+   "id": "or-13",
+   "category": "orthography",
+   "query": "ذاكرة",
+   "scope": "canonical",
+   "mode": "exact",
+   "expect": [
+    "02-sources/text/DER-0003.md"
+   ],
+   "note": "exact ignores harakat"
+  },
+  {
+   "id": "ex-01",
+   "category": "exact",
+   "query": "ferry schedule",
+   "scope": "canonical",
+   "mode": "exact",
+   "expect": [
+    "02-sources/text/DER-0001.md"
+   ],
+   "absent": [
+    "01-inbox/captures/CAP-0002.md"
+   ]
+  },
+  {
+   "id": "ex-02",
+   "category": "exact",
+   "query": "CLM-0004",
+   "scope": "canonical",
+   "mode": "exact",
+   "expect": [
+    "05-claims/CLM-0004.md"
+   ]
+  },
+  {
+   "id": "ex-03",
+   "category": "exact",
+   "query": "rahimi-kaviani-letter.jpg",
+   "scope": "canonical",
+   "mode": "exact",
+   "expect": [
+    "02-sources/records/SRC-0003.md"
+   ]
+  },
+  {
+   "id": "ex-04",
+   "category": "exact",
+   "query": "1402",
+   "scope": "canonical",
+   "mode": "exact",
+   "expect": [
+    "02-sources/records/SRC-0002.md",
+    "02-sources/text/DER-0005.md"
+   ]
+  },
+  {
+   "id": "ex-05",
+   "category": "exact",
+   "query": "ferry schedule",
+   "scope": "captures",
+   "mode": "exact",
+   "expect": [
+    "01-inbox/captures/CAP-0002.md"
+   ],
+   "absent": [
+    "02-sources/text/DER-0001.md"
+   ]
+  },
+  {
+   "id": "ex-06",
+   "category": "exact",
+   "query": "حافظه جمعی",
+   "scope": "canonical",
+   "mode": "exact",
+   "expect": [
+    "03-objects/OBJ-0001.md"
+   ],
+   "note": "record reads 'حافظه\u200cی جمعی' (ezafe): an exact phrase legitimately does not match",
+   "known_limit": "exact-is-not-fuzzy"
+  },
+  {
+   "id": "pp-01",
+   "category": "paraphrase",
+   "query": "Who is in charge of the Kavir Project?",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "06-relations/REL-0001.md",
+    "03-objects/OBJ-0003.md"
+   ],
+   "reformulated": "directs Kavir Project"
+  },
+  {
+   "id": "pp-02",
+   "category": "paraphrase",
+   "query": "چه کسی مسئول پروژه\u200cی کویر است؟",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "06-relations/REL-0001.md",
+    "03-objects/OBJ-0003.md"
+   ],
+   "reformulated": "Kavir Project directs",
+   "note": "cross-language: Persian question, English answer records",
+   "known_limit": "cross-language"
+  },
+  {
+   "id": "pp-03",
+   "category": "paraphrase",
+   "query": "How does a community keep its past alive?",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0001.md"
+   ],
+   "reformulated": "collective memory community past"
+  },
+  {
+   "id": "pp-04",
+   "category": "paraphrase",
+   "query": "گذشته را در جامعه چگونه نگه می\u200cدارند؟",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "03-objects/OBJ-0001.md"
+   ],
+   "reformulated": "حافظه\u200cی جمعی"
+  },
+  {
+   "id": "pp-05",
+   "category": "paraphrase",
+   "query": "Is the second manuscript newer than the first?",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0003.md"
+   ],
+   "reformulated": "Manuscript B later than Manuscript A",
+   "known_limit": "synonym-no-overlap"
+  },
+  {
+   "id": "pp-06",
+   "category": "paraphrase",
+   "query": "Can a digitised copy be treated as evidence of who wrote it?",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0004.md"
+   ],
+   "reformulated": "digitised authorship"
+  },
+  {
+   "id": "pp-07",
+   "category": "paraphrase",
+   "query": "آیا شاهدان پیش از نوشتن روایت\u200cها را به یاد داشتند؟",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "05-claims/CLM-0002.md"
+   ],
+   "reformulated": "شاهدان روایت\u200cها پیش از ثبت"
+  },
+  {
+   "id": "pp-08",
+   "category": "paraphrase",
+   "query": "Where was the river ferry timetable posted?",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "02-sources/text/DER-0001.md"
+   ],
+   "reformulated": "ferry schedule posted customs house",
+   "known_limit": "synonym-no-overlap"
+  },
+  {
+   "id": "pp-09",
+   "category": "paraphrase",
+   "query": "What does the note say about search results and evidence?",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [
+    "04-notes/NOTE-0001.md"
+   ],
+   "reformulated": "search hit evidence"
+  },
+  {
+   "id": "ng-01",
+   "category": "negative",
+   "query": "zzzxyz qqqwww",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": [],
+   "note": "no result is the correct result"
+  },
+  {
+   "id": "ng-02",
+   "category": "negative",
+   "query": "هیچچیزنیست",
+   "scope": "canonical",
+   "mode": "lexical",
+   "expect": []
+  }
+ ]
+}

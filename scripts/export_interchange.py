@@ -20,6 +20,12 @@ Subcommands:
                   checksummed witness reference) for one source record.
 
 Outputs land under _exports/interchange/ (git-ignored runtime output).
+
+PRIVACY: these are FULL archival exports. They may contain private or
+non-public record titles, identifiers, labels, relation participants and
+provenance metadata. They are not safe for public sharing unless explicitly
+filtered and reviewed. The publication valve is export_public.py
+(sensitivity-reviewed, written outside the repository).
 """
 from __future__ import annotations
 
@@ -215,9 +221,13 @@ def cmd_rocrate(_args) -> int:
     crate = ROOT / "ro-crate-metadata.json"
     data = json.loads(crate.read_text(encoding="utf-8"))
     graph = data.get("@graph", [])
+    def about_id(n):
+        a = n.get("about", "")  # RO-Crate 1.1 uses {"@id": "./"}; tolerate a bare string
+        return str(a.get("@id", "") if isinstance(a, dict) else a)
+
     mds = [n for n in graph
            if n.get("@type") in ("MetadataDescriptor", "CreativeWork")
-           and str(n.get("about", "")).endswith("./")]
+           and about_id(n).endswith("./")]
     if not mds:
         print("INVALID: no MetadataDescriptor about ./ in @graph")
         return 1
@@ -317,6 +327,9 @@ def main() -> int:
     p.add_argument("--source-id", required=True)
     p.set_defaults(fn=cmd_tei)
     args = ap.parse_args()
+    if args.cmd in ("prov", "skos", "tei"):
+        print("NOTE: full archival export; may contain private records. Not for public "
+              "sharing without review (use scripts/export_public.py).", file=sys.stderr)
     return args.fn(args)
 
 

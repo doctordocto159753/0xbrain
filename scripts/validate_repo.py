@@ -27,6 +27,8 @@ IGNORED_PREFIXES = (
     ".git/",
     ".harness-worktrees/",
     ".pytest_cache/",
+    ".venv/",           # local dev/test environment (git-ignored), never content
+    "venv/",
     "_search/",
     "02-sources/provenance/",
     "_proposals/patches/",

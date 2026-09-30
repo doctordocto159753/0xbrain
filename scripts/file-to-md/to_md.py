@@ -9,6 +9,7 @@ Requires: pymupdf (pdf/epub), python-docx (docx), python-pptx (pptx),
 """
 import argparse
 import datetime
+import hashlib
 import json
 import pathlib
 import sys
@@ -30,9 +31,18 @@ def quality_note(text):
     return "clean"
 
 
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def header(src, method, detail=""):
     line = ("# Extracted from " + src.name + "\n\n> method: " + method + " | bytes: "
-            + str(src.stat().st_size) + " | date: " + datetime.date.today().isoformat())
+            + str(src.stat().st_size) + " | sha256: " + sha256_file(src)
+            + " | date: " + datetime.date.today().isoformat())
     if detail:
         line += " | " + detail
     return line + "\n\n"
@@ -232,7 +242,8 @@ def main():
     out.write_text(md, encoding="utf-8")
     print(json.dumps({"ok": True, "output": str(out), "chars": len(md),
                       "tokens_est": len(md) // 4, "method": method,
-                      "needs_ocr": needs_ocr, "quality": note}, ensure_ascii=False))
+                      "sha256": sha256_file(src), "needs_ocr": needs_ocr,
+                      "quality": note}, ensure_ascii=False))
     return 0
 
 

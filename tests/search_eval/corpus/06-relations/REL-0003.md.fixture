@@ -1,0 +1,10 @@
+---
+id: REL-0003
+type: relation-object
+title: Manuscript B derived from نسخه‌ی A
+fixture: synthetic
+---
+
+# Manuscript B derived from نسخه‌ی A
+
+Relation kind: derived-from. Subject: نسخه‌ی B. Object: نسخه‌ی A. Status: proposed.

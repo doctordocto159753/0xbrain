@@ -6,8 +6,8 @@ description: Run deterministic validation and prepare a semantic audit report. R
 # Wiki Validate
 
 1. Run `python scripts/validate_repo.py --full`.
-2. Run `qmd status`.
-3. Run the semantic regression queries in `09-indexes/semantic-search-test-set.md`.
+2. Run `python scripts/search_lexical.py status` (index freshness; `stale` must be false).
+3. Run the lexical regression set: `python scripts/run_lexical_eval.py` (synthetic fixture, clean temporary index, no model). Then run any instance-specific queries with `python scripts/search_lexical.py search "<query>" --scope canonical`.
 4. Check:
    - duplicate or drifting terms;
    - unsupported claim upgrades;

@@ -32,7 +32,7 @@ python scripts/validate_repo.py --full
 python scripts/validate_content_release.py
 
 if (-not $SkipQmd) {
-    Step "Authority-aware QMD search"
+    Step "Authority-aware model-free QMD search"
     if (-not (Has-Command "npm")) {
         throw "npm is not available. Install Node.js 22 or newer, restart Claude Desktop or PowerShell, and run again."
     }
@@ -58,7 +58,7 @@ if (-not $SkipObsidianPlugin) {
 }
 
 Step "Claude Code or Claude Desktop"
-Write-Host "The project MCP configuration is in .mcp.json. Approve only the qmd server."
+Write-Host "The project .mcp.json registers no MCP server by default (QMD's own MCP server is not model-free and reads by path). To use the governed stdio server see SETUP_GUIDE_WINDOWS.md section 6."
 Write-Host "Claude must treat GPT-authored bundles as bounded patches and must not rewrite the corpus autonomously."
 
 Step "Final local verification"
@@ -66,4 +66,4 @@ python scripts/validate_repo.py --full
 python scripts/validate_content_release.py
 Write-Host ""
 Write-Host "LOCAL STATIC SETUP PASS" -ForegroundColor Green
-Write-Host "Next: run scripts/verify-install.ps1 and the semantic benchmark, then inspect 09-indexes/release-dashboard.md in Obsidian."
+Write-Host "Next: run scripts/verify-install.ps1 (model-free lexical search check), then inspect 09-indexes/release-dashboard.md in Obsidian."
