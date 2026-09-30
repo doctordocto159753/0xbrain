@@ -7,9 +7,29 @@
 #
 # Delegates to scripts/check_against_baseline.py, the same script CI runs
 # (.github/workflows/validate.yml), so a local pass and a CI pass mean the
-# same thing: no new validator error beyond .githooks/known-baseline-errors.txt.
+# same thing: no validator error beyond .githooks/known-baseline-errors.txt.
+#
+# Interpreter selection is portable (POSIX sh; Linux, macOS, Git-for-Windows):
+# BRAIN_PYTHON override, then python3, python, py -3. The check itself is
+# unchanged; if no Python 3 is found the commit is BLOCKED, never skipped.
 
 REPO_ROOT=$(git rev-parse --show-toplevel) || exit 1
 cd "$REPO_ROOT" || exit 1
 
-python scripts/check_against_baseline.py
+is_py3() {
+    "$@" -c 'import sys; sys.exit(0 if sys.version_info[0] >= 3 else 1)' >/dev/null 2>&1
+}
+
+if [ -n "$BRAIN_PYTHON" ] && is_py3 "$BRAIN_PYTHON"; then
+    exec "$BRAIN_PYTHON" scripts/check_against_baseline.py
+elif command -v python3 >/dev/null 2>&1 && is_py3 python3; then
+    exec python3 scripts/check_against_baseline.py
+elif command -v python >/dev/null 2>&1 && is_py3 python; then
+    exec python scripts/check_against_baseline.py
+elif command -v py >/dev/null 2>&1 && is_py3 py -3; then
+    exec py -3 scripts/check_against_baseline.py
+fi
+
+echo "pre-commit: no Python 3 interpreter found (tried BRAIN_PYTHON, python3, python, py -3)." >&2
+echo "Install Python 3 or set BRAIN_PYTHON; the integrity gate is never skipped." >&2
+exit 1
