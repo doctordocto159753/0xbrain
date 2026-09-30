@@ -114,7 +114,8 @@ def _scan_captures(root: Path) -> list[dict]:
     if not cdir.is_dir():
         return out
     for p in sorted(cdir.rglob("cap-*.md")):
-        text = p.read_text(encoding="utf-8", errors="ignore")
+        with open(p, encoding="utf-8", errors="ignore", newline="") as fh:
+            text = fh.read()
         fm = {}
         if _cap is not None:
             try:

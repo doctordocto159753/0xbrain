@@ -446,7 +446,7 @@ def tool_wiki_search_captures(args: dict) -> str:
         if state and fm.get("status") != state:
             continue
         try:
-            _, sections = _cap.parse_record_text(p.read_text(encoding="utf-8"))
+            _, sections = _cap.parse_record_text(_cap.read_record_file(p))
         except Exception:  # noqa: BLE001
             continue
         blob = "\n".join(sections.values()).casefold()

@@ -1,10 +1,8 @@
 """Characterization tests for scripts/capture/wiki_capture.py (Agent D, phase 1).
 
 These pin the behavior of the capture core AS SHIPPED at baseline 9395ed9.
-They are written before any core change. Known defects are pinned with
-`xfail(strict=True)`: the test states the desired behavior and fails today;
-when a Contract Change Request fixes the defect the strict xfail flips to a
-failure and must be removed deliberately.
+They were written before any core change. The three defects Agent D pinned as strict xfails (heading injection, CRLF,
+unknown front-matter keys) are fixed; their tests are ordinary regressions.
 """
 from __future__ import annotations
 
@@ -113,18 +111,16 @@ def test_record_path_layout_is_year_month_sharded(cap):
     assert (cap.CAPTURES_ROOT / y / ym / f"{cid}.md").is_file()
 
 
-# ------------------------------------------------------------- known defects
+# ------------------------------------------------- former defects (fixed)
+# DEFECT-1/2/3 were found by Agent D as strict xfails and fixed during
+# integration (Agent H). Exhaustive mutation tests: tests/test_capture_integrity.py.
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-1: user text line equal to a body "
-                   "section header is swallowed by parse_record_text")
 def test_text_with_section_header_line_roundtrips(cap):
     text = "before\n## Review notes\nafter\n"
     r = cap.capture_text(text, "mcp")
     assert cap.read_capture(r["id"])["sections"]["User-supplied text"] == text
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-2: CRLF text is hashed with \\r\\n "
-                   "but read back with universal newlines")
 def test_crlf_text_is_exact_and_validates(cap):
     text = "line1\r\nline2\r\n"
     r = cap.capture_text(text, "mcp")
@@ -133,31 +129,24 @@ def test_crlf_text_is_exact_and_validates(cap):
     assert cap.validate_record(r["id"]) == []
 
 
-def test_defect1_on_disk_bytes_intact_until_first_rewrite(cap):
-    """Pin the blast radius: the bytes are on disk until a rewrite occurs."""
+def test_defect1_heading_line_is_escaped_on_disk(cap):
     text = "before\n## Review notes\nafter\n"
     r = cap.capture_text(text, "mcp")
-    raw = cap.record_path(r["id"]).read_text(encoding="utf-8")
-    assert "before\n## Review notes\nafter" in raw
+    raw = cap.record_path(r["id"]).read_bytes().decode("utf-8")
+    assert "body_encoding: escaped-headings-v1" in raw
+    assert "before\n\\## Review notes\nafter" in raw
 
 
-def test_defect1_rewrite_permanently_loses_user_text_tail(cap):
-    """Documents the data-loss path a CCR must close (no fix in Agent D).
-
-    After any rewrite (set_state, transcript, ...) the text following the
-    spoofed header is gone from the record: the parser treats the user's line
-    as a section boundary and the real 'Review notes' section overwrites it.
-    """
+def test_defect1_rewrite_keeps_user_text(cap):
     text = "before\n## Review notes\nafter\n"
     r = cap.capture_text(text, "mcp")
-    cap.set_state(r["id"], "processing", "alice")
-    raw = cap.record_path(r["id"]).read_text(encoding="utf-8")
-    assert "before" in raw and "after" not in raw.replace("[alice]", "")
-    assert cap.validate_record(r["id"]) != []       # hash no longer matches
+    cap.set_state(r["id"], "processing", "alice", note="checked")
+    got = cap.read_capture(r["id"])["sections"]
+    assert got["User-supplied text"] == text
+    assert "[alice] checked" in got["Review notes"]
+    assert cap.validate_record(r["id"]) == []
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT-3: writers drop front-matter keys they "
-                   "do not know, so a newer writer's fields vanish on any rewrite")
 def test_unknown_front_matter_key_survives_rewrite(cap):
     r = cap.capture_text("x", "mcp")
     p = cap.record_path(r["id"])
