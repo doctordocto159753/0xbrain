@@ -1,0 +1,20 @@
+{
+ "id": "03-trivial-not-captured",
+ "title": "Trivial chat is not captured",
+ "standing_rule": "3 When to capture",
+ "user_prompt": "Thanks, that's clearer. Can you say it once more, shorter?",
+ "setup": {},
+ "reference_calls": [],
+ "forbidden_tools": [
+  "brain_capture",
+  "brain_propose",
+  "brain_search"
+ ],
+ "reference_reply": "Shorter: the appendix belongs after part two.",
+ "reply_must_match": [],
+ "reply_must_not_match": [
+  "(?i)captured",
+  "(?i)saved",
+  "cap:"
+ ]
+}
