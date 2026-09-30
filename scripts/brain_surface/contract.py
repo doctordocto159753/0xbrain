@@ -99,6 +99,22 @@ TOOLS = [
              "text": {"type": "string", "minLength": 1},
              "language_hint": {"type": "string", "enum": list(LANG_HINTS), "default": "unknown"}},
          "required": ["text"]}},
+    {"name": "brain_ingest_file",
+     "description": (
+         "Add a user-supplied source document to the archive with its EXACT original "
+         "bytes: the original is held immutably with its SHA-256, a source record "
+         "(pending registration) is created, and a deterministic text derivative is "
+         "extracted where possible (pdf, docx, pptx, xlsx, html, epub, txt, md). "
+         "The file must first be uploaded by the owner through the archive's upload "
+         "page, which returns an upload_ref; you cannot pass file contents here. Never "
+         "substitute a summary or your own transcription for the file. Report the "
+         "receipt fields (source_ref, sha256, extraction, commit_state) as returned."),
+     "inputSchema": {"type": "object", "additionalProperties": False,
+         "properties": {
+             "upload_ref": {"type": "string", "pattern": "^upl-[A-Za-z0-9_-]{43}$"},
+             "title": {"type": "string", "maxLength": 200},
+             "description": {"type": "string", "maxLength": 2000}},
+         "required": ["upload_ref"]}},
     {"name": "brain_reconcile_context",
      "description": (
          "Read-only evidence package around a seed ref and/or a query, for "

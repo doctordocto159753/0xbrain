@@ -49,9 +49,9 @@ At most 64 pending consents and 32 registered clients are kept.
 
 ## Tool surface (integrated)
 
-`load_adapter()` returns exactly the six semantic K3 tools
-(`brain_search`, `brain_read`, `brain_capture`, `brain_reconcile_context`,
-`brain_propose`, `brain_status`) from `scripts/brain_surface` over the one
+`load_adapter()` returns exactly the seven semantic tools
+(`brain_search`, `brain_read`, `brain_capture`, `brain_ingest_file`,
+`brain_reconcile_context`, `brain_propose`, `brain_status`) from `scripts/brain_surface` over the one
 `WikiBackend` (search: `search_lexical`; capture: `wiki_capture` + K9;
 proposals/reconciliation/status: Agent E modules). `BRAIN_MCP_ADAPTER`
 accepts only `semantic` (default) or `legacy`; `legacy` (the stdio `wiki_*`
@@ -85,7 +85,7 @@ Security review: `docs/SECURITY.md`.
   DCR allowlist, lockout, rotation/revocation/restart persistence, denylist,
   fail-closed adapter selection).
 - `tests/test_remote_semantic.py`: the production surface end to end over
-  HTTP on a real git wiki (exact six tools, capture/search/read/reconcile/
+  HTTP on a real git wiki (exact seven tools, capture/search/read/reconcile/
   propose, K9 commits) plus PKCE, code reuse, open redirect, resource and
   scope binding, state-file privacy, bounded state, startup fail-closed,
   remote-session review refusal.

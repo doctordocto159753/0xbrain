@@ -18,6 +18,7 @@
 |---|---|
 | "What did we decide about X?" | `brain_search` (canonical, then variants), `brain_read` the hits, answers with refs |
 | "Save this: ..." | `brain_capture` verbatim, reports `cap:` ref and commit state |
+| "Add this document exactly" | asks you to upload it at `/upload`, then `brain_ingest_file(upload_ref)`; reports SHA-256, source/derivative refs ([INGEST.md](INGEST.md)) |
 | "Does this contradict what we have?" | `brain_read` the older record, `brain_reconcile_context`, states a candidate reading, may capture + propose |
 | "Everything about X" | `brain_reconcile_context` depth `deep`, follows `next_cursor` to the end |
 | "Propose linking A and B" | `brain_propose` `relation-edge` with a verbatim quote |
@@ -26,9 +27,10 @@
 ## What Claude cannot do (by design)
 
 Edit, delete or promote canonical records; accept or review proposals or
-captures; read files by path; see media (voice, images) through the
+captures; register ingested sources; read files by path; receive the bytes
+of a file you attach in chat (use the upload page); see media (voice, images) through the
 connector; run anything on the server. These are not missing features: the
-remote surface has exactly six tools.
+remote surface has exactly seven tools.
 
 ## Good habits
 

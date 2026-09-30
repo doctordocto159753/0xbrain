@@ -54,7 +54,7 @@ export BRAIN_OWNER_SECRET=...        # from .env; never printed
 ```
 
 It runs the same OAuth flow (redirect URI = Claude's callback, which it
-never follows) and checks: exactly six tools, status, capture persisted and
+never follows) and checks: exactly seven tools, status, capture persisted and
 committed, search and read find it, a path-style ref is rejected, optional
 proposal. `--reuse-only` proves a restart kept the tokens valid.
 
@@ -92,7 +92,30 @@ Claude client (web/desktop/mobile) and each result.
 10. `docker compose restart brain`; in the same chat call `brain_status`
     again. Expected: works without a new consent (tokens persist as hashes).
 11. Revoke the connector in Claude settings (or `POST /revoke`); the next
-    call must fail with an auth error.
+    call must fail with an auth error. (Reconnect before the ingest steps.)
 
-Pass = every step as expected. Until this is recorded, the release verdict
+File ingestion (extends the gate; see [INGEST.md](INGEST.md)):
+
+12. Attach a PDF in the Claude chat and say "add this to my wiki exactly".
+    Expected (fixture 10): Claude calls no write tool, says nothing was
+    added, and asks for an upload at `https://<domain>/upload`. Record
+    whether Claude offers any way to pass the attachment bytes to a tool; if
+    it does, capture the exact tool call it makes (this would be the first
+    evidence for a native attachment channel; until then
+    ATTACHMENT_TRANSPORT stays UNVERIFIED).
+13. Upload the same PDF at `/upload` (owner secret), paste the shown
+    `upload_ref` to Claude and ask it to ingest. Expected: `brain_ingest_file`
+    receipt with `ok`, `sha256`, `source_ref`, `derivative_ref`,
+    `extraction: complete`, `commit_state: committed`.
+14. On the server: `sha256sum _originals/remote-mcp/<id>--*.pdf` equals the
+    receipt and `sha256sum` of your local file; `git log -1 --stat` lists the
+    original, record, derivative, `CORPUS_STATE.json` and entry pages only.
+15. Ask Claude to find a phrase from the document (`brain_search`) and read
+    the derivative (`brain_read` on the `doc:` ref).
+16. `docker compose restart brain`; ask for `brain_read` of the `source_ref`
+    again: the material is still there.
+
+Pass = every step as expected. Direct ingestion from an ordinary Claude
+attachment is claimed only if step 12 shows the original bytes reaching the
+server, which the current protocol does not provide. Until this is recorded, the release verdict
 stays **CONDITIONAL PASS — blocked only on real official-Claude external E2E**.

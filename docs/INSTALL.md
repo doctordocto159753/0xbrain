@@ -59,6 +59,7 @@ disposable tests only.
 | `BRAIN_STATE_DIR` | host state root: `auth/` (OAuth state), `qmd/` (index), `caddy/`, `backups/` |
 | `BRAIN_UID`, `BRAIN_GID` | owner of the repository; containers run as this user |
 | `BRAIN_GIT_NAME`, `BRAIN_GIT_EMAIL` | identity of the server's noncanonical commits |
+| `BRAIN_UPLOAD_MAX_BYTES`, `BRAIN_UPLOAD_TTL`, `BRAIN_UPLOAD_MAX_PENDING` | optional bounds of the `/upload` staging for `brain_ingest_file` (50 MiB, 3600 s, 20) |
 
 Fixed in `compose.yaml` for the brain container: `BRAIN_STATE_DIR=/state/auth`
 (the server's persistent OAuth directory), `WIKI_QMD_HOME=/state/qmd`,
@@ -72,7 +73,7 @@ with a health-only stub for plumbing tests; never set it on a real install.
 | What | Path | Backed up |
 |---|---|---|
 | repository, `.git`, `_originals`, captures, proposals, `.env` | `BRAIN_DATA_DIR` | yes |
-| OAuth state (clients, hashed tokens) | `$BRAIN_STATE_DIR/auth` | yes |
+| OAuth state (clients, hashed tokens); `uploads/` staging (short-lived) | `$BRAIN_STATE_DIR/auth` | yes |
 | Caddy certificates | `$BRAIN_STATE_DIR/caddy` | yes |
 | search index | `$BRAIN_STATE_DIR/qmd` | no, rebuildable |
 | backups | `$BRAIN_STATE_DIR/backups` | (they are the backups) |

@@ -1,4 +1,4 @@
-"""BrainSurface: the six frozen K3 tools over the integrated WikiBackend.
+"""BrainSurface: the seven semantic tools (frozen K3 + brain_ingest_file) over the integrated WikiBackend.
 
 The surface owns only the public contract: argument shapes, the typed-ref
 boundary, result envelopes and authority labelling. Semantics belong to the
@@ -19,7 +19,7 @@ DEFAULT_N = 10
 MAX_N = 50
 MAX_CAPTURE_CHARS = 500_000          # internal safety bound, reported when hit
 MAX_FIELD_CHARS = 20_000
-WRITE_TOOLS = ("brain_capture", "brain_propose")
+WRITE_TOOLS = ("brain_capture", "brain_ingest_file", "brain_propose")
 
 
 def _err(code, message, persisted=None, **extra):
@@ -141,6 +141,22 @@ class BrainSurface:
         r = self.b.capture(text, language_hint)
         return {"ok": True, **r, "authority_note": C.CAPTURE_NOTE}
 
+    # ------------------------------------------------------ brain_ingest_file
+    def brain_ingest_file(self, upload_ref, title=None, description=None):
+        if not isinstance(upload_ref, str) or not upload_ref.strip():
+            return _err("E_BAD_ARGUMENTS", "upload_ref is required (from the upload page)",
+                        persisted=False)
+        for name, v, n in (("title", title, 200), ("description", description, 2000)):
+            if v is not None and (not isinstance(v, str) or len(v) > n):
+                return _err("E_BAD_ARGUMENTS", f"{name} must be a string of at most {n} chars",
+                            persisted=False)
+        r = self.b.ingest_file(upload_ref.strip(), title, description)
+        return {"ok": True, **r,
+                "authority_note": (
+                    "The original is the exact artifact (authority); the derivative is a "
+                    "deterministic extraction; any reading of it is candidate material. "
+                    "Registration into the corpus of record is a human step.")}
+
     # ------------------------------------------------ brain_reconcile_context
     def brain_reconcile_context(self, seed_ref=None, query=None, depth="focused",
                                 cursor=None, sections=None, expand=None):
@@ -221,6 +237,8 @@ class BrainSurface:
             degraded.append("uncommitted noncanonical writes")
         if s["search"]["state"] != "ok":
             degraded.append(f"search index {s['search']['state']}")
+        if s["ingest"]["uncommitted"]:
+            degraded.append("uncommitted ingested material")
         if s["validation"].get("state") != "pass":
             degraded.append("validation not passing")
         return {"ok": True, **s, "degraded": bool(degraded), "degraded_reasons": degraded,

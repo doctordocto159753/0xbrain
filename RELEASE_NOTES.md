@@ -1,3 +1,23 @@
+# 0xBrain release notes
+
+## 1.0.0-rc2 (unreleased): `brain_ingest_file`
+
+- Seventh tool, `brain_ingest_file(upload_ref, title?, description?)`: adds a
+  user-supplied document (pdf, docx, pptx, xlsx, html, epub, txt, md) with
+  its **exact original bytes**, SHA-256, a pending-registration source record
+  and a deterministic `to_md.py` derivative; duplicates by SHA are detected;
+  failed extraction or commit never loses the original.
+- Owner-authenticated `/upload` page (owner secret or bearer token) returns a
+  single-use, short-lived `upload_ref`. Reason: an MCP tool call carries only
+  JSON arguments and Claude documents no forwarding of chat attachments to
+  connector tools, so direct attachment ingestion from an ordinary Claude
+  chat is **not** available (ATTACHMENT_TRANSPORT: UNVERIFIED).
+- K9 gains one narrow write class (new files only under `_originals/remote-mcp/`,
+  `02-sources/records/`, `02-sources/text/` + held counters). Registration stays
+  human. `scripts/review.sh flush-ingest` retries an uncommitted ingest.
+- Docs: `docs/INGEST.md`; standing instructions section 11; release gate
+  steps 12-16.
+
 # 0xBrain 1.0.0-rc1 release notes
 
 Status: **release candidate**, CONDITIONAL PASS. It is blocked only on the

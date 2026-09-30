@@ -5,12 +5,14 @@ Runs the real OAuth 2.1 flow (discovery, dynamic client registration, PKCE,
 owner consent with BRAIN_OWNER_SECRET, token) with the official MCP client,
 then checks the public contract:
 
-  1. tools/list is exactly the six brain_* tools
+  1. tools/list is exactly the seven brain_* tools
   2. brain_status answers
   3. brain_capture stores a unique marker (persisted + commit_state)
   4. brain_search (captures, lexical) and brain_read find it
   5. optional: brain_propose with --evidence REF --quote TEXT
   6. a path-style ref is rejected
+  7. optional: --ingest-file FILE uploads FILE to /upload with the owner's
+     bearer token and ingests it with brain_ingest_file (exact bytes)
 
 The registered redirect URI is Claude's callback (allowlisted by default);
 the smoke client never follows it: it reads the authorization code from the
@@ -41,8 +43,8 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.auth import (AuthorizationCodeResult, OAuthClientInformationFull,
                              OAuthClientMetadata, OAuthToken)
 
-EXPECTED = ["brain_search", "brain_read", "brain_capture", "brain_reconcile_context",
-            "brain_propose", "brain_status"]
+EXPECTED = ["brain_search", "brain_read", "brain_capture", "brain_ingest_file",
+            "brain_reconcile_context", "brain_propose", "brain_status"]
 REDIRECT = "https://claude.ai/api/mcp/auth_callback"
 
 
@@ -122,6 +124,10 @@ async def smoke(args) -> dict:
                 report["status"] = {k: st.get(k) for k in ("ok", "snapshot", "degraded",
                                                            "degraded_reasons")}
                 report["status_uncommitted"] = st.get("uncommitted", {}).get("count")
+                if args.read_ref:
+                    rd = text(await s.call_tool("brain_read", {"ref": args.read_ref}))
+                    report["read_ref"] = {"ok": rd.get("ok"), "tier": rd.get("tier"),
+                                          "bytes": rd.get("bytes")}
                 if args.status_only:
                     return report
                 cap = text(await s.call_tool("brain_capture", {
@@ -137,6 +143,34 @@ async def smoke(args) -> dict:
                 report["read_verbatim"] = marker in json.dumps(read.get("sections", {}))
                 bad = await s.call_tool("brain_read", {"ref": "../_originals/x.md"})
                 report["path_ref_rejected"] = bad.is_error and text(bad)["error"]["code"] == "E_BAD_REF"
+                if args.ingest_file:
+                    import hashlib
+                    raw = Path(args.ingest_file).read_bytes()
+                    tok = (await storage.get_tokens()).access_token
+                    async with httpx2.AsyncClient(verify=not args.insecure, timeout=120) as h:
+                        up = await h.post(args.url.rstrip("/") + "/upload",
+                                          headers={"Authorization": f"Bearer {tok}"},
+                                          files={"file": (Path(args.ingest_file).name, raw)})
+                    staged = up.json()
+                    ing = text(await s.call_tool("brain_ingest_file", {
+                        "upload_ref": staged.get("upload_ref", ""),
+                        "title": "remote smoke ingest"}))
+                    report["ingest"] = {k: ing.get(k) for k in (
+                        "ok", "duplicate", "source_ref", "derivative_ref", "sha256", "bytes",
+                        "extraction", "commit_state", "error")}
+                    report["ingest"]["local_sha256"] = hashlib.sha256(raw).hexdigest()
+                    if args.ingest_phrase:
+                        hits = text(await s.call_tool("brain_search", {
+                            "query": args.ingest_phrase, "mode": "exact", "scope": "canonical"}))
+                        refs = [h.get("ref") for h in
+                                hits.get("groups", {}).get("canonical", {}).get("results", [])]
+                        report["ingest"]["search_found_derivative"] = ing.get("derivative_ref") in refs
+                    if ing.get("derivative_ref"):
+                        rd = text(await s.call_tool("brain_read", {"ref": ing["derivative_ref"]}))
+                        report["ingest"]["derivative_has_sha"] = ing.get("sha256", "") in rd.get(
+                            "content", "")
+
+                    report["ingest"]["upload_status"] = up.status_code
                 if args.evidence:
                     prop = text(await s.call_tool("brain_propose", {
                         "kind": "object-note",
@@ -159,6 +193,9 @@ def main(argv=None) -> int:
     ap.add_argument("--status-only", action="store_true")
     ap.add_argument("--evidence", help="rec:<id> to cite in a test proposal")
     ap.add_argument("--quote", help="verbatim quote from --evidence (>= 20 chars)")
+    ap.add_argument("--ingest-file", help="upload and ingest this file exactly")
+    ap.add_argument("--ingest-phrase", help="exact phrase expected in the ingested file's text")
+    ap.add_argument("--read-ref", help="brain_read this ref (e.g. after a restart)")
     args = ap.parse_args(argv)
     try:
         report = asyncio.run(smoke(args))
@@ -171,6 +208,13 @@ def main(argv=None) -> int:
             and report["read_verbatim"] and report["path_ref_rejected"]
         if args.evidence:
             ok = ok and report["proposal"].get("ok")
+        if args.ingest_file:
+            ing = report["ingest"]
+            ok = ok and ing.get("ok") and ing.get("sha256") == ing.get("local_sha256")
+            if args.ingest_phrase:
+                ok = ok and ing.get("search_found_derivative")
+        if args.read_ref:
+            ok = ok and report["read_ref"].get("ok")
     report["ok"] = bool(ok)
     print(json.dumps(report, indent=1, ensure_ascii=False))
     return 0 if ok else 1

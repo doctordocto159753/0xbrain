@@ -8,7 +8,7 @@
     python scripts/brain_review.py defer   PROP_ID --actor NAME [--note ..] [--yes]
     python scripts/brain_review.py edit    PROP_ID --actor NAME --set field=value [--yes]
     python scripts/brain_review.py promote PROP_ID --actor NAME [--paths ...] [--yes]
-    python scripts/brain_review.py status | flush
+    python scripts/brain_review.py status | flush | flush-ingest
 
 Boundary (K3/K9): the remote MCP surface has NO access to this module. It
 must never be imported by wiki_mcp_server.py; tests enforce that the MCP tool
@@ -310,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("promote"); s.add_argument("id")
     s.add_argument("--actor", required=True); s.add_argument("--paths", nargs="*")
     s.add_argument("--yes", action="store_true")
-    sub.add_parser("status"); sub.add_parser("flush")
+    sub.add_parser("status"); sub.add_parser("flush"); sub.add_parser("flush-ingest")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
     try:
@@ -348,10 +348,34 @@ def main(argv: list[str] | None = None) -> int:
             res = gs.flush_pending(root)
             print(json.dumps(res, ensure_ascii=False, indent=1))
             return 0 if res["committed"] else 1
+        elif args.cmd == "flush-ingest":
+            assert_human_context()
+            res = flush_ingest(root)
+            print(json.dumps(res, ensure_ascii=False, indent=1))
+            return 0 if res["committed"] else 1
     except (ReviewError, gs.GovernanceError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     return 0
+
+
+def flush_ingest(root: Path) -> dict:
+    """Commit held-intake material (brain_ingest_file) whose commit failed:
+    only the held-intake path class, after full validation."""
+    root = Path(root)
+    assert_human_context()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from brain_surface import ingest as ing  # noqa: PLC0415 (human CLI -> library is allowed)
+
+    def paths() -> list[str]:
+        return [f["path"] for f in gs.uncommitted_state(
+            root, ing.NEW_FILE_PREFIXES + ing.COUNTER_FILES)["uncommitted"]]
+
+    if not paths():
+        return {"committed": True, "paths": [], "detail": "nothing pending"}
+    return gs.locked_write_commit(root, paths, "brain: commit pending held intake",
+                                  validate=lambda: _run_validation(root),
+                                  allow=ing.commit_policy(root))
 
 
 if __name__ == "__main__":

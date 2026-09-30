@@ -29,6 +29,8 @@ import time
 from pathlib import Path
 
 from . import refs as R
+from . import ingest as ING
+from . import uploads as UP
 
 _SCRIPTS = Path(__file__).resolve().parents[1]
 for _p in (_SCRIPTS, _SCRIPTS / "capture"):
@@ -208,6 +210,49 @@ class WikiBackend:
                 "bytes": r["bytes"], "channel": CAPTURE_CHANNEL,
                 "duplicate_of": f"cap:{r['duplicate_of']}" if r.get("duplicate_of") else None,
                 "persisted": True, **_commit_state(res, self.root)}
+
+    # --------------------------------------------------------------- ingest
+    def ingest_file(self, upload_ref: str, title: str | None, description: str | None) -> dict:
+        """Held intake of an owner-uploaded file (exact bytes), K9-committed."""
+        try:
+            r = ING.ingest(self.root, upload_ref, title, description)
+        except UP.UploadError as exc:
+            raise (BackendUnavailable(exc.message) if exc.code == "E_UNAVAILABLE"
+                   else Rejected(exc.code, exc.message, persisted=False)) from exc
+        except ING.IngestError as exc:
+            if exc.code == "E_UNAVAILABLE":
+                raise BackendUnavailable(exc.message) from exc
+            raise Rejected(exc.code, exc.message, persisted=False) from exc
+        if r["duplicate"]:
+            ex = r["existing"]
+            src = R.public_ref_for_path(self.root, ex["record_path"], ex.get("record_id")) \
+                if ex.get("record_path") else None
+            der = R.public_ref_for_path(self.root, ex["extracted_text_path"]) \
+                if ex.get("extracted_text_path") else None
+            return {"duplicate": True, "original_ref": src, "source_ref": src,
+                    "derivative_ref": der, "sha256": r["sha"], "bytes": r["size"],
+                    "mime_type": r["mime"], "filename": r["name"], "persisted": True,
+                    "commit_state": "not_needed",
+                    "note": "identical bytes are already held; nothing new was stored"}
+        k9 = r["k9"]
+        src = f"rec:{r['rid']}"
+        der = R.public_ref_for_path(self.root, r["der_rel"]) if r.get("der_rel") else None
+        committed = bool(k9.get("committed"))
+        out = {"duplicate": False, "original_ref": src, "source_ref": src,
+               "derivative_ref": der, "sha256": r["sha"], "bytes": r["size"],
+               "mime_type": r["mime"], "filename": r["name"],
+               "holdings_tier": ING.HELD_TIER, "extraction": r["extraction"],
+               "validation": "pass" if k9.get("stage") != "validation" else "fail",
+               "persisted": True,
+               "commit_state": "committed" if committed else "persisted_uncommitted",
+               "commit": k9.get("commit") or (self._head() if committed else None)}
+        if not committed:
+            out.update({"commit_stage": k9.get("stage"),
+                        "commit_error": scrub(k9.get("error"), self.root)[-300:],
+                        "note": ("The original and its records are stored durably but not "
+                                 "committed. Nothing was deleted; brain_status lists them "
+                                 "until the owner commits them (scripts/review.sh flush-ingest).")})
+        return out
 
     # ------------------------------------------------------------ proposals
     def propose(self, kind: str, structured_fields: dict, evidence_refs: list) -> dict:
@@ -400,6 +445,7 @@ class WikiBackend:
                            else "stale" if search.get("stale") else
                            "ok" if search.get("index_present") else "missing")
         unc = gs.uncommitted_state(self.root)
+        ingest_unc = gs.uncommitted_state(self.root, ING.NEW_FILE_PREFIXES + ING.COUNTER_FILES)
         canonical_dirty = self._git("status", "--porcelain=v1", "-uall", "--",
                                     *ea.CANONICAL_ZONES, "_originals")
         return {
@@ -421,6 +467,11 @@ class WikiBackend:
                             "last_failure": json.loads(scrub(json.dumps(unc["last_failure"]),
                                                              self.root)) if unc["last_failure"] else None,
                             "clean": unc["clean"]},
+            "ingest": {"held_pending_registration": (state.get("holdings_by_tier") or {}).get(
+                            ING.HELD_TIER),
+                       "uncommitted": ingest_unc["uncommitted"],
+                       "staged_uploads": UP.pending(),
+                       "staging": "available" if UP.upload_dir() else "not configured"},
             "git": {"head": self._head(), "branch": self._git("rev-parse", "--abbrev-ref", "HEAD"),
                     "canonical_uncommitted": len((canonical_dirty or "").splitlines())},
         }
