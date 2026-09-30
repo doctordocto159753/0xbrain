@@ -1,6 +1,6 @@
 # Agent 0 — Reuse Audit, Feature Preservation Matrix & Contract Freeze
 
-Status: **complete, awaiting acceptance.** Supersedes the earlier "blocked" report.
+Status: **accepted with revisions** (K3, K5, K9 revised per owner decision). Supersedes the earlier "blocked" report.
 Evidence labels: **[V]** verified by running/reading code in this session,
 **[I]** inference, **[U]** unverified (delegated to a named agent).
 
@@ -99,7 +99,7 @@ W wrap, C configure, X extend (additive), D defer.
 | Proposal queue | `tool_wiki_propose`, `_proposals/proposals.jsonl`, `proposal_schema.json` | – | – | N | W + X | Server accepts 3 of 8 schema kinds with free-text body only; new wrapper must take structured fields | A/E |
 | Evidence audit | `evidence_audit.py` | `test_evidence_audit` (≈24 total pytest) | – | N | P | Reuse as submit-time validator (import its checks) | E |
 | Reconciliation core | `reconcile_runner.py`, `wiki-reconcile` skill | `test_reconcile_runner` | – | N | P | This is corpus-audit planning (batches, exact-once), *not* semantic reconciliation; the package builder is new | B/E |
-| Context packer / graph index | `context_pack.py`, `build_graph_index.py` | `test_context_compiler` | sqlite3 | N | W | Basis for the reconciliation package (seed record → 1-hop neighborhood, budgeted, reason-tagged) | B |
+| Context packer / graph index | `context_pack.py`, `build_graph_index.py` | `test_context_compiler` | sqlite3 | N | W | Basis for the reconciliation package (seed record → graph neighborhood, reason-tagged; its 16k/30 defaults are not contract, see K5) | B |
 | File-to-md | `scripts/file-to-md/to_md.py` | none | pymupdf, docx, pptx, openpyxl, bs4 | N | P | Header records method, bytes, date; **no source SHA-256**. MarkItDown comparison deferred (Section 6) | F |
 | Interchange export | `export_interchange.py` | – | – | N | P | PROV-O, SKOS, TEI, RO-Crate check. Namespace `living-wiki-kit.local` to be revisited | F |
 | Public export valve | `export_public.py` | – | – | N | P | Gated on `visibility: public` | F |
@@ -168,14 +168,14 @@ record_description, validate_record, recover_orphans}`,
 
 **K3 Remote tool surface** (thin wrappers, names frozen):
 
-| Tool | Maps to | Notes |
+| Tool | Maps to | Contract |
 |---|---|---|
-| `brain_search(query, n, mode="lexical"\|"exact")` | `tool_wiki_search`, `tool_wiki_exact` | Results carry `authority_note`; captures excluded unless `scope="captures"` |
-| `brain_read(path \| capture_id)` | `tool_wiki_read`, `read_capture`, `wiki_get_media` | Read-only |
-| `brain_capture(kind, text?, media?, language_hint)` | `capture_text`/`capture_media` | Always `received`; channel fixed `mcp` |
-| `brain_reconcile_context(seed_id, hops, query?)` | `context_pack` + package (K5) | Read-only, budgeted |
-| `brain_propose(kind, fields…)` | proposal queue | Structured per `proposal_schema.json`; **validated at submit** by `evidence_audit` logic; reject with reasons instead of queueing junk |
-| `brain_status()` | new, trivial | counts, validator status, search index freshness, pending `needs_*` captures |
+| `brain_search(query, scope, n, mode="lexical"\|"exact")` | `tool_wiki_search`, `tool_wiki_exact`, `wiki_search_captures` | `scope` is **required-explicit**: `canonical \| captures \| all`. `canonical` = the five canonical zones only. `captures` = noncanonical intake only. `all` returns two separately labelled result groups, never one merged ranking. Every result carries `authority_note` and its zone/tier |
+| `brain_read(ref)` | `tool_wiki_read`, `read_capture` | **Only `ref`.** No filesystem `path` is accepted publicly. `ref` is an opaque identifier (record id, capture id, or a `ref` returned by search/reconcile) that the server resolves to a file internally; the path resolution and existing `_safe_resolve` checks stay server-side. Read-only |
+| `brain_capture(text, language_hint)` | `capture_text` | **Text-first.** Always creates `received`, channel fixed `mcp`. Remote media ingestion (`capture_media`, `wiki_get_media`) is **not** part of the frozen remote contract until proven with real Claude; the multimodal capture core (CLI, Telegram hook, `capture_media`, recovery, state machine) is preserved unchanged |
+| `brain_reconcile_context(seed_id, mode, ...)` | `context_pack` + package (K5) | Read-only; modes `focused \| deep` |
+| `brain_propose(kind, fields...)` | proposal queue | Structured per `proposal_schema.json`; **validated at submit** by `evidence_audit` logic; reject with reasons instead of queueing junk |
+| `brain_status()` | new, trivial | counts, validator status, search index freshness, pending `needs_*` captures, uncommitted noncanonical writes |
 
 **Not exposed remotely:** `wiki_mark_capture_reviewed` (a human decision with
 an unauthenticated `actor` string). Review and promotion stay CLI/human. Also
@@ -191,8 +191,28 @@ the existing separate sections with a method label `claude` and
 **K5 Reconciliation package** (JSON, read-only, no verdicts): `seed`,
 `canonical_records[]`, `claims[]`, `relations[]`, `source_records[]`,
 `captures[]`, `superseded[]`, `open_proposals[]`, `unresolved[]`, `chronology[]`
-(genesis/handoff refs). Every item has `id`, `path`, `authority_level`, `reason`
-(as `context_pack` already emits). Budget default 16 000 est. tokens, 30 records.
+(genesis/handoff refs). Every item has `id`, `ref`, `authority_level`, `reason`
+(as `context_pack` already emits).
+
+There is **no frozen token or record budget.** The former 16 000-token /
+30-record defaults of `context_pack.py` are implementation defaults of the old
+CLI, not product contract. Quality and semantic completeness outrank token
+economy for now.
+
+- `focused`: seed plus its direct (1-hop) neighborhood, all section types,
+  plus lexical hits for an optional query. Intended to fit one response.
+- `deep`: multi-hop expansion (`hops` parameter), lexical expansion, full
+  superseded/older-formulation and chronology sections. Supports **pagination
+  and expansion**: response carries `cursor`/`next_cursor`, per-section
+  `total` vs `returned`, and accepts `sections=[...]` and `expand=[ref...]`
+  to pull more of a specific branch.
+- **Internal safety bounds are allowed** (hard ceilings on records, bytes,
+  hops, runtime; configurable, not part of the contract) but must never
+  truncate silently: any cut is reported as `truncated: true` with the
+  section, the reason, and the `next_cursor` to continue. A bound must not
+  be the reason a semantically relevant record is absent without notice.
+- Ordering is deterministic (authority level, then graph distance, then id)
+  so pagination is stable.
 
 **K6 Auth boundary.** Single owner. Unauthenticated requests get nothing,
 including `brain_status`. Secrets only via `.env` (git-ignored); never in the repo.
@@ -205,11 +225,26 @@ navigation. `qmd embed`, `vsearch`, bare `query` never run by default.
 (defined by Agent A); compose services `caddy`, `brain`, optional `auth`.
 Container needs Python 3.12 + Node ≥22 (qmd).
 
-**K9 Git history (open, default chosen).** Nothing in the base commits
-server-written files. Default: the server writes to the working tree only;
-a snapshot job commits `01-inbox/` and `_proposals/` to a dedicated branch
-through the existing hook gate; canonical promotion stays human PRs.
-The user may overrule.
+**K9 Git history (single-owner mode).** Supersedes the earlier snapshot-branch proposal.
+
+- Remote MCP writes **only noncanonical zones**: `01-inbox/captures/` and
+  `_proposals/`. It has no canonical write, review, accept or promote
+  capability (`wiki_mark_capture_reviewed` stays unexposed).
+- After the write and its validation (`wiki_capture.validate_record`, proposal
+  schema/evidence check), the operation **may commit directly to `main`**,
+  under a Git/file lock, staging only the paths that operation wrote
+  (`git commit -- <paths>`) and passing through the existing hook gate.
+- Preservation beats commit success: if validation-gated commit fails or the
+  lock times out, the capture stays on disk, `brain_status` reports it as
+  uncommitted, and nothing is lost or retried destructively. Failed
+  validation of a proposal rejects it before it is written.
+- **Canonical promotion** is only by explicit human CLI/review: full
+  validation (`validate_repo.py --full`, `validate_content_release.py`,
+  baseline gate), then a **separate commit on `main`**.
+- Branches/PRs are reserved for bulk migration, large reconciliation and
+  high-risk or major changes (optional or required per change), never for
+  routine capture/propose operations.
+- Multi-owner or public deployment would reopen this decision.
 
 ## 8. File ownership
 
@@ -261,13 +296,13 @@ done
   behavior; answer the reuse-first questions in your PR; do not edit files you
   do not own.
 - **A:** timeboxed spike per Section 6; deliverable is a working remote server
-  exposing K3 through wrapped `DISPATCH` functions, plus a written comparison
+  exposing K3 (text-first capture, `ref`-only read, explicit `scope`) through wrapped `DISPATCH` functions, plus a written comparison
   and a connection test.
 - **B:** derive standing instructions from `CLAUDE.md` + skills; state
   what Claude does versus what the server does, and how `needs_*` items are handled.
 - **C:** author lexical eval set and collections config (C1); Linux refresh
   scripts without `qmd embed`; test that no model file is downloaded.
-- **D:** tests for existing capture core first; then additive K4.
+- **D:** tests for existing capture core first; then additive K4. Multimodal core stays intact; remote media is out of contract until proven.
 - **E:** empty the baseline file, make hook interpreter-portable, move
   proposal validation into an importable function for `brain_propose`.
 - **F:** add source SHA-256 to conversion headers; MarkItDown comparison
