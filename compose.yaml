@@ -17,6 +17,8 @@ services:
       args:
         PYTHON_BASE: ${BRAIN_PYTHON_BASE:-python:3.12-slim-bookworm}
       secrets: [extra_ca]
+      # "host" only when the build must reach an egress proxy on the host's loopback.
+      network: ${BRAIN_BUILD_NETWORK:-default}
     image: ${BRAIN_IMAGE:-0xbrain/brain:local}
     init: true
     restart: unless-stopped

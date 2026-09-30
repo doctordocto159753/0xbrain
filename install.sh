@@ -24,12 +24,13 @@ Usage: ./install.sh [options]
   --http-port N --https-port N   host ports (default 80/443; non-default only with --tls-internal)
   --python-base IMAGE    base image override (default python:3.12-slim-bookworm)
   --build-ca FILE        extra CA bundle for the image build behind a TLS-inspecting proxy
+  --build-network NAME   network for the image build (e.g. host, to reach a loopback egress proxy)
   --stub                 run the health-only deployment STUB instead of the server (plumbing tests only)
 USAGE
 }
 
 DOMAIN="" EMAIL="" NAME="" PREFIX="" STATE_DIR="" YES=0 SKIP_DNS=0
-TLS_INTERNAL=0 HTTP_PORT="" HTTPS_PORT="" PY_BASE="" BUILD_CA="" STUB=0
+TLS_INTERNAL=0 HTTP_PORT="" HTTPS_PORT="" PY_BASE="" BUILD_CA="" BUILD_NET="" STUB=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) DOMAIN="$2"; shift 2;; --email) EMAIL="$2"; shift 2;;
@@ -38,6 +39,7 @@ while [ $# -gt 0 ]; do
     --skip-dns-check) SKIP_DNS=1; shift;; --tls-internal) TLS_INTERNAL=1; shift;;
     --http-port) HTTP_PORT="$2"; shift 2;; --https-port) HTTPS_PORT="$2"; shift 2;;
     --python-base) PY_BASE="$2"; shift 2;; --build-ca) BUILD_CA="$2"; shift 2;;
+    --build-network) BUILD_NET="$2"; shift 2;;
     --stub) STUB=1; shift;; -h|--help) usage; exit 0;;
     *) usage >&2; die "unknown option: $1" 2;;
   esac
@@ -122,6 +124,7 @@ env_set BRAIN_HTTP_PORT "$HTTP_PORT"; env_set BRAIN_HTTPS_PORT "$HTTPS_PORT"
 env_set BRAIN_PUBLIC_URL "https://$DOMAIN$([ "$HTTPS_PORT" != 443 ] && echo ":$HTTPS_PORT" || true)"
 env_set BRAIN_TLS_DIRECTIVE "$([ "$TLS_INTERNAL" -eq 1 ] && echo 'tls internal' || true)"
 [ -n "$PY_BASE" ] && env_set BRAIN_PYTHON_BASE "$PY_BASE"
+[ -n "$BUILD_NET" ] && env_set BRAIN_BUILD_NETWORK "$BUILD_NET"
 [ "$STUB" -eq 1 ] && env_set BRAIN_ALLOW_STUB 1
 # Owner passphrase for the OAuth consent page: generated once, never rotated by a re-run.
 cur_secret="$(env_get BRAIN_OWNER_SECRET)"
