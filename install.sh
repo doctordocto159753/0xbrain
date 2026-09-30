@@ -19,6 +19,7 @@ Usage: ./install.sh [options]
   --prefix ID            record-ID prefix, 2-8 chars [a-z][a-z0-9]
   --auth-domain HOST     optional external-IdP domain (needs --auth-image)
   --auth-image IMAGE     container image for the external IdP
+  --auth-command CMD     optional command override for the IdP container
   --state-dir DIR        state root (default /var/lib/0xbrain)
   --yes                  non-interactive; fail instead of asking
   --skip-dns-check       do not compare DNS with this host's addresses
@@ -30,13 +31,13 @@ Usage: ./install.sh [options]
 USAGE
 }
 
-DOMAIN="" EMAIL="" NAME="" PREFIX="" AUTH_DOMAIN="" AUTH_IMAGE="" STATE_DIR="" YES=0 SKIP_DNS=0
+DOMAIN="" EMAIL="" NAME="" PREFIX="" AUTH_DOMAIN="" AUTH_IMAGE="" AUTH_CMD="" STATE_DIR="" YES=0 SKIP_DNS=0
 TLS_INTERNAL=0 HTTP_PORT="" HTTPS_PORT="" PY_BASE="" BUILD_CA="" STUB=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) DOMAIN="$2"; shift 2;; --email) EMAIL="$2"; shift 2;;
     --name) NAME="$2"; shift 2;; --prefix) PREFIX="$2"; shift 2;;
-    --auth-domain) AUTH_DOMAIN="$2"; shift 2;; --auth-image) AUTH_IMAGE="$2"; shift 2;;
+    --auth-domain) AUTH_DOMAIN="$2"; shift 2;; --auth-image) AUTH_IMAGE="$2"; shift 2;; --auth-command) AUTH_CMD="$2"; shift 2;;
     --state-dir) STATE_DIR="$2"; shift 2;; --yes) YES=1; shift;;
     --skip-dns-check) SKIP_DNS=1; shift;; --tls-internal) TLS_INTERNAL=1; shift;;
     --http-port) HTTP_PORT="$2"; shift 2;; --https-port) HTTPS_PORT="$2"; shift 2;;
@@ -141,6 +142,7 @@ rm -f "$STATE_DIR/caddy/conf.d/auth.caddy"
 if [ -n "$AUTH_DOMAIN" ]; then
   env_set BRAIN_AUTH_DOMAIN "$AUTH_DOMAIN"; env_set BRAIN_AUTH_IMAGE "$AUTH_IMAGE"
   env_set COMPOSE_PROFILES auth
+  [ -z "$AUTH_CMD" ] || env_set BRAIN_AUTH_COMMAND "$AUTH_CMD"
   port="$(env_get BRAIN_AUTH_PORT)"; port="${port:-1411}"; env_set BRAIN_AUTH_PORT "$port"
   cat > "$STATE_DIR/caddy/conf.d/auth.caddy" <<CADDY
 $AUTH_DOMAIN {

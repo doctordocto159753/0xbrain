@@ -48,7 +48,7 @@ if [ "${#inc[@]}" -gt 0 ]; then
   tar -C "$STATE" --transform 's,^,state/,' -rf "$work/$name" "${inc[@]}"
 fi
 tar -C "$work" -rf "$work/$name" BACKUP_INFO.txt
-[ -z "${paused:-}" ] || { dc unpause brain >/dev/null; paused=""; }
+[ -z "${paused:-}" ] || { dc unpause brain >/dev/null; paused=""; wait_brain_healthy 90 || warn "brain not healthy 90s after resume; check docker compose ps"; }
 
 out="$DEST/$name.gz"
 gzip -c "$work/$name" > "$work/out"
@@ -61,7 +61,8 @@ fi
 ( cd "$DEST" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256" )
 # Integrity: the archive must be readable end to end and contain the Git directory.
 if [ -z "${BRAIN_BACKUP_PASSPHRASE:-}" ]; then
-  tar -tzf "$out" | grep -q '^repo/.git/HEAD$' || die "backup verification failed: repo/.git missing" 7
+  listing="$(tar -tzf "$out")" || die "backup verification failed: archive unreadable" 7
+  grep -qx 'repo/.git/HEAD' <<<"$listing" || die "backup verification failed: repo/.git missing" 7
 fi
 if [ -n "$KEEP" ]; then
   ls -1t "$DEST"/0xbrain-backup-*.tar.gz* 2>/dev/null | grep -v '\.sha256$' | tail -n +"$((KEEP + 1))" | while read -r old; do rm -f "$old" "$old.sha256"; done

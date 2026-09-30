@@ -78,6 +78,7 @@ services:
   auth:
     profiles: ["auth"]
     image: ${BRAIN_AUTH_IMAGE:-busybox:stable}
+    command: ${BRAIN_AUTH_COMMAND:-}
     restart: unless-stopped
     env_file: ${BRAIN_AUTH_ENV_FILE:-/dev/null}
     volumes:
