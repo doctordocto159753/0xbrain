@@ -33,9 +33,17 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends git git-lfs ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+# git is required (K9 commits); git-lfs only silences the repository's LFS
+# hooks and is installed whenever apt is reachable. A base that already ships
+# git (python:3.12-bookworm) needs no package download at all.
+RUN if ! command -v git >/dev/null 2>&1; then \
+      apt-get update && apt-get install -y --no-install-recommends git git-lfs ca-certificates \
+      && rm -rf /var/lib/apt/lists/*; \
+    elif ! command -v git-lfs >/dev/null 2>&1; then \
+      ( apt-get update && apt-get install -y --no-install-recommends git-lfs \
+        && rm -rf /var/lib/apt/lists/* ) || echo "git-lfs unavailable; LFS hooks will only warn"; \
+    fi \
+ && git --version
 
 # Node runtime + QMD, copied from the build stage (same Debian release => same glibc).
 COPY --from=qmd /usr/local/bin/node /usr/local/bin/node
