@@ -1,0 +1,10 @@
+---
+id: NOTE-0001
+type: note
+title: Notes on retrieval versus evidence
+fixture: synthetic
+---
+
+# Notes on retrieval versus evidence
+
+A search hit says where to look, not what is true. Lexical rank orders attention; only the source record and the immutable original carry evidence.

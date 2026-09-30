@@ -16,9 +16,7 @@ if ($LASTEXITCODE -ne 0) { exit 3 }
 
 $Collections = (qmd collection list 2>&1 | Out-String)
 $Required = @(
-    "wiki-root", "wiki-system", "wiki-objects", "wiki-notes",
-    "wiki-claims", "wiki-relations", "wiki-genesis", "wiki-indexes",
-    "wiki-source-records", "wiki-derivatives"
+    "wiki", "wiki-source-records", "wiki-derivatives", "wiki-captures"
 )
 foreach ($Name in $Required) {
     if ($Collections -notmatch [regex]::Escape($Name)) {
@@ -27,16 +25,16 @@ foreach ($Name in $Required) {
     }
 }
 
-Write-Host "4. Exact canonical test"
-qmd search '"relation loss"' --files -n 5
+Write-Host "4. Exact canonical test (deterministic, no index)"
+python scripts/search_lexical.py exact "relation loss" --scope canonical -n 5
 if ($LASTEXITCODE -ne 0) { exit 5 }
 
-Write-Host "5. Semantic canonical test"
-qmd query "a visible connection remains while its source conditions and uncertainty disappear" --files -n 8
+Write-Host "5. Lexical canonical test (BM25 via QMD, model-free)"
+python scripts/search_lexical.py search "relation loss" --scope canonical -n 8
 if ($LASTEXITCODE -ne 0) { exit 6 }
 
-Write-Host "6. Source-record test"
-qmd search "smoke-test" -c wiki-source-records --files -n 5
+Write-Host "6. Index freshness"
+python scripts/search_lexical.py status
 if ($LASTEXITCODE -ne 0) { exit 7 }
 
 Write-Host "INSTALLATION VERIFICATION PASS"

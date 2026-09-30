@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Run the Mozare Wiki 1.1.0 QMD semantic benchmark."""
+"""Run the Mozare Wiki 1.1.0 QMD semantic benchmark.
+
+OPTIONAL and MODEL-BACKED: `qmd query` without a typed lex document runs
+query expansion and vector retrieval, which download and run local models.
+The default search path is model-free (scripts/search_lexical.py,
+scripts/run_lexical_eval.py); this script therefore refuses to run unless
+--allow-models is passed. Its fixture (semantic-benchmark-v1.1.0.json) is
+not shipped with the kit.
+"""
 from __future__ import annotations
 
 import argparse
@@ -138,6 +146,8 @@ def write_markdown(report: dict, path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--allow-models", action="store_true",
+                        help="acknowledge that this benchmark downloads and runs local models")
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--threshold", type=int)
     parser.add_argument("--timeout", type=int, default=240)
@@ -146,6 +156,11 @@ def main() -> int:
         default="_audits/runtime/semantic-benchmark-1.1.0.json",
     )
     args = parser.parse_args()
+    if not args.allow_models:
+        print("Refusing: this benchmark is model-backed (query expansion, embeddings). "
+              "Use scripts/run_lexical_eval.py for the model-free default, or pass --allow-models.",
+              file=sys.stderr)
+        return 2
 
     config = json.loads(CONFIG.read_text(encoding="utf-8"))
     top_k = args.top_k or config.get("top_k", 5)

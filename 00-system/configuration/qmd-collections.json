@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Model-free lexical QMD collections. Single source of truth for scripts/search_lexical.py, configure-search.(sh|ps1) and refresh-search.(sh|ps1). Every collection is rooted at the repository root and selects files by mask, so a result path is always repository-relative. A mask that matches nothing is valid (the numbered layers appear only when material arrives).",
+  "index_home": "_search/qmd",
+  "collections": [
+    {
+      "name": "wiki",
+      "tier": "canonical-record",
+      "mask": "{03-objects,04-notes,05-claims,06-relations}/**/*.md",
+      "zone_prefixes": ["03-objects/", "04-notes/", "05-claims/", "06-relations/"],
+      "context": "Canonical records: objects, notes, claims, relations. Interpretive questions start here.",
+      "include_by_default": true
+    },
+    {
+      "name": "wiki-source-records",
+      "tier": "source-record",
+      "mask": "02-sources/records/**/*.md",
+      "zone_prefixes": ["02-sources/records/"],
+      "context": "Provenance records pointing to immutable originals. Use for where-does-this-come-from questions.",
+      "include_by_default": false
+    },
+    {
+      "name": "wiki-derivatives",
+      "tier": "derivative",
+      "mask": "02-sources/text/**/*.md",
+      "zone_prefixes": ["02-sources/text/"],
+      "context": "Machine-extracted text of originals. Candidate passages only; open the original for exact form.",
+      "include_by_default": false
+    },
+    {
+      "name": "wiki-captures",
+      "tier": "capture",
+      "mask": "01-inbox/captures/**/*.md",
+      "zone_prefixes": ["01-inbox/captures/"],
+      "context": "Noncanonical intake captures. Never canonical evidence.",
+      "include_by_default": false
+    }
+  ],
+  "scopes": {
+    "canonical": {
+      "group": "canonical",
+      "collections": ["wiki", "wiki-source-records", "wiki-derivatives"],
+      "exact_zones": ["02-sources", "03-objects", "04-notes", "05-claims", "06-relations"]
+    },
+    "captures": {
+      "group": "captures",
+      "collections": ["wiki-captures"],
+      "exact_zones": ["01-inbox/captures"]
+    },
+    "all": {
+      "groups": ["canonical", "captures"]
+    }
+  },
+  "model_free": {
+    "allowed_qmd_commands": ["search", "query", "collection", "context", "update", "status", "ls", "get", "multi-get", "cleanup"],
+    "forbidden_qmd_commands": ["embed", "vsearch", "pull", "mcp", "bench", "init", "skill", "skills"],
+    "query_rule": "qmd query is allowed only as a typed document whose every line is 'lex:' and only with --no-rerank; bare (expand) queries load a query-expansion model."
+  }
+}
