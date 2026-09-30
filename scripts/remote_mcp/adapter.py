@@ -9,7 +9,7 @@ Contract:
   * handlers are synchronous and may block; the transport runs them in a
     worker thread.
 
-Production surface (fail-closed): exactly the six semantic K3 tools
+Production surface (fail-closed): exactly the seven semantic tools (K3 + brain_ingest_file)
 (``brain_*``) from ``scripts/brain_surface``. ``BRAIN_MCP_ADAPTER`` accepts
 only ``semantic`` (default). ``legacy`` (the stdio ``wiki_*`` tools, which
 include path-based reads) is a development-only, NOT-for-product mode that
@@ -27,7 +27,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[2]
 _SCRIPTS = str(ROOT / "scripts")
 
-SEMANTIC_TOOLS = ("brain_search", "brain_read", "brain_capture",
+SEMANTIC_TOOLS = ("brain_search", "brain_read", "brain_capture", "brain_ingest_file",
                   "brain_reconcile_context", "brain_propose", "brain_status")
 
 # Never exposed remotely, whatever an adapter returns: human review, path-based
@@ -48,7 +48,7 @@ class ToolSpec:
 
 
 def semantic_adapter(root: Path | None = None) -> list[ToolSpec]:
-    """The six K3 tools, bound to one BrainSurface over the WikiBackend."""
+    """The seven semantic tools, bound to one BrainSurface over the WikiBackend."""
     if _SCRIPTS not in sys.path:
         sys.path.insert(0, _SCRIPTS)
     from brain_surface import BrainSurface, TOOLS  # noqa: PLC0415

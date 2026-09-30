@@ -74,13 +74,14 @@ def walk(obj):
 # ------------------------------------------------------------ K3 exactness
 
 def test_tool_names_and_args_are_exactly_k3():
-    assert TOOL_NAMES == ("brain_search", "brain_read", "brain_capture",
+    assert TOOL_NAMES == ("brain_search", "brain_read", "brain_capture", "brain_ingest_file",
                           "brain_reconcile_context", "brain_propose", "brain_status")
     args = {t["name"]: set(t["inputSchema"]["properties"]) for t in TOOLS}
     assert args == {
         "brain_search": {"query", "mode", "scope", "n"},
         "brain_read": {"ref"},
         "brain_capture": {"text", "language_hint"},
+        "brain_ingest_file": {"upload_ref", "title", "description"},
         "brain_reconcile_context": {"seed_ref", "query", "depth", "cursor", "sections", "expand"},
         "brain_propose": {"kind", "structured_fields", "evidence_refs"},
         "brain_status": set(),

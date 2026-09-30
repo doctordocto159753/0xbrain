@@ -13,7 +13,8 @@ Caddy (TLS, ACME)  --->  brain container  (python scripts/remote_mcp/server.py)
                           |
                           |  MCP SDK 2.2.0 low-level Server, stateless streamable HTTP
                           |  owner_auth.py: single-owner OAuth provider (state: /state/auth)
-                          |  adapter.py: fail-closed -> exactly six brain_* tools
+                          |  adapter.py: fail-closed -> exactly seven brain_* tools
+                          |  upload.py: owner-authenticated /upload -> upload_ref
                           v
                      brain_surface/
                        contract.py   frozen K3 schemas

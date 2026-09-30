@@ -18,7 +18,7 @@ so new wikis can be instantiated in minutes with the same guarantees.
 6. `GPT_WORKFLOW.md` — using a cloud LLM as content author, safely
 7. `CLAUDE.md` / `AGENTS.md` — rules any AI harness inherits
 8. `docs/README.md` — 0xBrain: VPS deployment and the official-Claude
-   remote connector (six `brain_*` tools, single-owner OAuth, model-free)
+   remote connector (seven `brain_*` tools, single-owner OAuth, model-free)
 
 ## The one non-negotiable rule
 

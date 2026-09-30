@@ -38,7 +38,7 @@ those remain canonical.
 - **MCP servers:** local harnesses may register `scripts/wiki_mcp_server.py`
   (stdio JSON-RPC; each machine registers its own interpreter path in its
   local harness config; never commit machine-specific interpreter paths).
-  Remote conversations reach the archive only through the six `brain_*`
+  Remote conversations reach the archive only through the seven `brain_*`
   tools of `scripts/remote_mcp/server.py` (`docs/claude/TOOL_USAGE.md`;
   standing instructions: `docs/claude/STANDING_INSTRUCTIONS.md`). Review,
   acceptance and promotion are human-only (`scripts/brain_review.py`).

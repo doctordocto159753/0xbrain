@@ -264,8 +264,10 @@ def test_registration_and_pending_consent_are_bounded():
 def test_startup_configuration_fails_closed(monkeypatch, tmp_path):
     base = {"BRAIN_PUBLIC_URL": "https://brain.example.com", "BRAIN_OWNER_SECRET": SECRET}
     for k in ("BRAIN_STATE_DIR", "BRAIN_EPHEMERAL_AUTH", "BRAIN_ALLOWED_REDIRECTS",
-              "BRAIN_MCP_ADAPTER", "BRAIN_UNSAFE_REMOTE_LEGACY"):
-        monkeypatch.delenv(k, raising=False)
+              "BRAIN_MCP_ADAPTER", "BRAIN_UNSAFE_REMOTE_LEGACY",
+              "BRAIN_REMOTE_SESSION", "BRAIN_UPLOAD_DIR"):
+        monkeypatch.setenv(k, "")          # recorded, so teardown restores the original state
+        monkeypatch.delenv(k)
     for k, v in base.items():
         monkeypatch.setenv(k, v)
     with pytest.raises(SystemExit):                          # no persistent auth state
@@ -295,7 +297,7 @@ def test_unprotected_mcp_route_refuses_to_start():
 
 def test_remote_session_cannot_run_human_review(wiki, monkeypatch):
     s = semantic_adapter(wiki)
-    prop = s[4].handler({"kind": "object-note",
+    prop = next(t for t in s if t.name == "brain_propose").handler({"kind": "object-note",
                          "structured_fields": {"object_id": "obj-nil", "note": "n", "why": "w"},
                          "evidence_refs": [{"ref": "rec:obj-nil", "quote": QUOTE}]})
     assert prop["ok"]
@@ -312,3 +314,63 @@ def test_remote_session_cannot_run_human_review(wiki, monkeypatch):
     import re
     assert not re.search(r"^\s*(import brain_review|from brain_review)", src, re.M)
     assert "shell=True" not in src
+
+
+# ------------------------------------------------------------ brain_ingest_file over HTTP
+
+def test_remote_surface_is_exactly_seven_tools():
+    assert SEMANTIC_TOOLS == ("brain_search", "brain_read", "brain_capture", "brain_ingest_file",
+                              "brain_reconcile_context", "brain_propose", "brain_status")
+
+
+def test_upload_requires_owner_auth_and_ingest_works_end_to_end(wiki, tmp_path, monkeypatch):
+    monkeypatch.setenv("BRAIN_UPLOAD_DIR", str(tmp_path / "staging"))
+    monkeypatch.setenv("BRAIN_UPLOAD_MAX_BYTES", "4096")
+    doc = "Minutes of the Nil meeting.\r\nمتن فارسی\r\n".encode()
+    storage = MemStorage()
+    with Running(tools=semantic_adapter(wiki)) as srv:
+        # a session gives us an owner bearer token (same OAuth boundary as /mcp)
+        run(with_session(srv.url, storage, lambda s: s.list_tools()))
+        token = storage.tokens.access_token
+        with httpx2.Client() as h:
+            files = {"file": ("minutes.txt", doc, "text/plain")}
+            page = h.get(srv.url + "/upload")
+            assert page.status_code == 200 and "upl-" not in page.text
+            assert h.post(srv.url + "/upload", files=files).status_code == 401      # no auth
+            assert h.post(srv.url + "/upload", files=files,
+                          data={"secret": "wrong-secret-value!"}).status_code == 401
+            assert h.post(srv.url + "/upload", files=files,
+                          headers={"Authorization": "Bearer forged"}).status_code == 401
+            big = {"file": ("big.txt", b"x" * 100_000, "text/plain")}
+            assert h.post(srv.url + "/upload", files=big,
+                          headers={"Authorization": f"Bearer {token}"}).status_code == 413
+            by_secret = h.post(srv.url + "/upload", files=files, data={"secret": SECRET})
+            assert by_secret.status_code == 200 and "ingest upload_ref=upl-" in by_secret.text
+            r = h.post(srv.url + "/upload", files={"file": ("minutes.txt", doc + b"v2", "text/plain")},
+                       headers={"Authorization": f"Bearer {token}"})
+            assert r.status_code == 200, r.text
+            staged = r.json()
+        assert staged["sha256"] == __import__("hashlib").sha256(doc + b"v2").hexdigest()
+
+        async def scenario(s):
+            names = [t.name for t in (await s.list_tools()).tools]
+            res = await s.call_tool("brain_ingest_file", {"upload_ref": staged["upload_ref"],
+                                                          "title": "Nil meeting minutes"})
+            again = await s.call_tool("brain_ingest_file", {"upload_ref": staged["upload_ref"]})
+            return names, text_of(res), res.is_error, text_of(again)
+
+        names, out, is_err, again = run(with_session(srv.url, storage, scenario))
+    assert names == list(SEMANTIC_TOOLS) and len(names) == 7
+    assert not is_err and out["ok"] and out["commit_state"] == "committed", json.dumps(out)
+    assert out["extraction"] == "complete" and out["source_ref"].startswith("rec:")
+    orig = next((wiki / "_originals/remote-mcp").iterdir())
+    assert orig.read_bytes() == doc + b"v2"
+    assert again["error"]["code"] == "E_UPLOAD_NOT_FOUND"                     # single use
+
+
+def test_unauthenticated_ingest_tool_call_rejected(wiki):
+    hdr = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "brain_ingest_file", "arguments": {"upload_ref": "upl-" + "a" * 43}}}
+    with Running(tools=semantic_adapter(wiki)) as srv, httpx2.Client() as h:
+        assert h.post(srv.url + "/mcp", json=body, headers=hdr).status_code == 401

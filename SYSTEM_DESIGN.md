@@ -36,7 +36,7 @@ It ships everything needed to start a **new wiki instance** for any subject:
   the per-script status);
 - a local stdio MCP server exposing read / search / propose to any AI
   harness, and a remote MCP server (streamable HTTP, single-owner OAuth)
-  exposing six semantic `brain_*` tools to official Claude (see
+  exposing seven semantic `brain_*` tools to official Claude (see
   `FINAL_ARCHITECTURE.md`);
 - a controlled vocabulary so status words mean the same thing everywhere.
 
@@ -138,7 +138,8 @@ See `INSTANTIATE.md` for the full checklist. Summary:
 | `check_against_baseline.py` | shared local-hook/CI gate: fail only on NEW errors vs `.githooks/known-baseline-errors.txt` | operational |
 | `wiki_capture.py` (+ `capture/`) | governed multimodal capture: hash, dedupe, atomic store, state machine | operational |
 | `wiki_mcp_server.py` | local stdio MCP (not the remote surface): `wiki_read`, `wiki_search`, `wiki_propose` — writes go only to `_proposals/` | operational |
-| `remote_mcp/server.py` (+ `owner_auth.py`, `adapter.py`) | remote MCP: streamable HTTP + single-owner OAuth 2.1; exactly the six `brain_*` tools; fail-closed | operational |
+| `remote_mcp/server.py` (+ `owner_auth.py`, `adapter.py`) | remote MCP: streamable HTTP + single-owner OAuth 2.1; exactly the seven `brain_*` tools; fail-closed; owner upload endpoint for exact-file ingest | operational |
+| `brain_surface/ingest.py` (+ `uploads.py`) | held intake for `brain_ingest_file`: exact original under `_originals/remote-mcp/`, pending-registration source record, `to_md.py` derivative, held counters; K9 commit | operational |
 | `brain_surface/` | K3 contract (`contract.py`), public ref grammar (`refs.py`), envelopes (`surface.py`), the one backend wiring search/capture/governance (`backend.py`) | operational |
 | `search_lexical.py` | model-free search: QMD BM25 (typed `lex:`, `--no-rerank`) + normalised exact; explicit scopes; refuses model paths | operational |
 | `evidence_audit.py` / `brain_proposals.py` | proposal schema + evidence validation (one validator), candidate queue append | operational |

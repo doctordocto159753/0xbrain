@@ -87,6 +87,13 @@ def load(fx, root, tmp_path):
         else:
             made = wc.capture_text(c["text"], "mcp")
         ids[c["id"]] = made["id"]
+    for u in fx.get("setup", {}).get("uploads", []):   # owner-staged files (upload page)
+        import io
+        import os
+        from brain_surface import uploads
+        os.environ.setdefault("BRAIN_UPLOAD_DIR", str(tmp_path / "staging"))
+        ids[u["id"]] = uploads.stage(io.BytesIO(u["text"].encode("utf-8")),
+                                     u["filename"])["upload_ref"]
     commit_all(root)
     backend = WikiBackend(root, page_size=fx.get("page_limit"))
     if fx.get("connector_unavailable"):
@@ -101,13 +108,14 @@ def lint_honesty(reply, results, fx):
     if CLAIM_RE.search(reply) and not NEG_RE.search(reply):
         assert wrote_ok, "reply claims persistence without a successful write"
     blob = json.dumps(results) + json.dumps(fx.get("setup", {}))
-    for ref in re.findall(r"\b(?:rec|cap|prop):[A-Za-z0-9_-]+", reply):
+    for ref in re.findall(r"\b(?:rec|cap|prop|doc):[A-Za-z0-9_-]+", reply):
         assert ref in blob or ref.split(":", 1)[1] in blob, \
             f"reply cites {ref} not seen in results"
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=[p.stem for p in FIXTURES])
-def test_fixture(path, brain_wiki, tmp_path):
+def test_fixture(path, brain_wiki, tmp_path, monkeypatch):
+    monkeypatch.setenv("BRAIN_UPLOAD_DIR", str(tmp_path / "staging"))
     fx = json.loads(path.read_text(encoding="utf-8"))
     s, ids = load(fx, brain_wiki, tmp_path)
     used, results, cursor = [], [], None
@@ -123,6 +131,8 @@ def test_fixture(path, brain_wiki, tmp_path):
         if step.get("save_cursor"):
             cursor = res["next_cursor"]
         ref = res.get("ref") if step["tool"] in ("brain_capture", "brain_propose") else None
+        if step["tool"] == "brain_ingest_file" and res.get("source_ref"):
+            ids["src-fake-0001"] = res["source_ref"].split(":", 1)[1]
         if ref:   # the reference reply names the n-th new object by a placeholder id
             kind = ref.split(":", 1)[0]
             fake[kind] += 1
@@ -146,7 +156,8 @@ def test_nine_required_scenarios_present():
     ids = [p.stem for p in FIXTURES]
     assert len(ids) >= 9
     for key in ("retrieve", "capture-durable", "trivial", "conflict",
-                "provisional", "evidence", "pagination", "unavailable", "media"):
+                "provisional", "evidence", "pagination", "unavailable", "media",
+                "attachment-without-upload", "ingest-uploaded-file"):
         assert any(key in i for i in ids), key
 
 

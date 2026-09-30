@@ -1,0 +1,24 @@
+{
+ "id": "10-attachment-without-upload",
+ "title": "A file attached in chat is not ingested by reconstruction",
+ "standing_rule": "11 Files and source documents",
+ "user_prompt": "[attaches minutes.pdf] Add this document to my wiki exactly as it is.",
+ "setup": {},
+ "reference_calls": [],
+ "forbidden_tools": [
+  "brain_capture",
+  "brain_ingest_file",
+  "brain_propose"
+ ],
+ "reference_reply": "I can't pass the file itself to 0xBrain from this chat: the connector only receives text I write, so anything I sent would be my reconstruction, not your original. Please upload minutes.pdf on your archive's upload page (https://<your-brain-domain>/upload); it returns an upload_ref. Give me that ref and I'll ingest the exact file with brain_ingest_file. Nothing has been added yet.",
+ "reply_must_match": [
+  "(?i)upload",
+  "upload_ref",
+  "(?i)nothing has been added|not (been )?(added|saved|stored)"
+ ],
+ "reply_must_not_match": [
+  "(?i)\\bingested\\b",
+  "(?i)i (have )?(added|saved|stored) (it|the (file|document))",
+  "(?i)summary"
+ ]
+}

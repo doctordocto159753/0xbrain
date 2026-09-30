@@ -1,0 +1,55 @@
+{
+ "id": "11-ingest-uploaded-file",
+ "title": "Owner-uploaded document ingested exactly, then read through its derivative",
+ "standing_rule": "11 Files and source documents",
+ "user_prompt": "I uploaded the minutes: upload_ref UPLOAD_1. Add it exactly.",
+ "setup": {
+  "uploads": [
+   {
+    "id": "UPLOAD_1",
+    "filename": "minutes.txt",
+    "text": "Minutes: the appendix moves to the end of part two.\n"
+   }
+  ]
+ },
+ "reference_calls": [
+  {
+   "tool": "brain_ingest_file",
+   "args": {
+    "upload_ref": "UPLOAD_1",
+    "title": "Meeting minutes"
+   },
+   "expect": {
+    "ok": true,
+    "duplicate": false,
+    "extraction": "complete",
+    "commit_state": "committed",
+    "persisted": true
+   }
+  },
+  {
+   "tool": "brain_search",
+   "args": {
+    "query": "appendix moves",
+    "mode": "exact",
+    "scope": "canonical"
+   },
+   "expect": {
+    "ok": true,
+    "groups.canonical.count": ">=1"
+   }
+  }
+ ],
+ "forbidden_tools": [
+  "brain_capture"
+ ],
+ "reference_reply": "Ingested the exact file as rec:src-fake-0001 (held original, pending registration; SHA-256 and a deterministic text derivative recorded, committed). The derivative says the appendix moves to the end of part two; that is the extracted text, not an interpretation. Registration into the corpus of record is your step.",
+ "reply_must_match": [
+  "rec:src-fake-0001",
+  "(?i)exact",
+  "(?i)registration"
+ ],
+ "reply_must_not_match": [
+  "(?i)summar(y|ised|ized) (it|the file) and"
+ ]
+}

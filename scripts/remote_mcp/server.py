@@ -9,17 +9,21 @@ Environment (secrets only from env, never from files in the repo):
                                 unless BRAIN_EPHEMERAL_AUTH=1, which keeps it in memory: tests)
   BRAIN_ALLOWED_REDIRECTS       comma list replacing the default Claude callbacks (exact URIs)
   BRAIN_ALLOW_LOOPBACK_REDIRECTS=1   permit http://localhost redirects (dev/tests only)
-  BRAIN_MCP_ADAPTER             'semantic' (default: the six brain_* tools) or 'legacy'
+  BRAIN_MCP_ADAPTER             'semantic' (default: the seven brain_* tools) or 'legacy'
                                 (development only; also needs BRAIN_UNSAFE_REMOTE_LEGACY=1)
   BRAIN_HOST / BRAIN_PORT       bind address (default 127.0.0.1:8787); put TLS in front
   BRAIN_FORWARDED_ALLOW_IPS     proxy addresses trusted for X-Forwarded-* (default 127.0.0.1)
+  BRAIN_UPLOAD_DIR              staging for /upload -> brain_ingest_file (default $BRAIN_STATE_DIR/uploads)
+  BRAIN_UPLOAD_MAX_BYTES / BRAIN_UPLOAD_TTL / BRAIN_UPLOAD_MAX_PENDING
+                                staging bounds (default 50 MiB / 3600 s / 20)
 
 The process always runs with BRAIN_REMOTE_SESSION=1, so the human review CLI
 (brain_review.py) refuses to act if it is ever reached from this process.
 
 The server exposes nothing to an unauthenticated caller except liveness
-(/healthz), OAuth discovery/registration/authorize/token/revoke, and the owner
-login form. /mcp answers 401 with a resource-metadata pointer.
+(/healthz), OAuth discovery/registration/authorize/token/revoke, the owner
+login form and the upload form (GET only; POST needs the owner secret or a
+bearer token). /mcp answers 401 with a resource-metadata pointer.
 """
 from __future__ import annotations
 
@@ -46,9 +50,11 @@ if __package__ in (None, ""):  # executed as a script
     sys.path.insert(0, str(_HERE.parent))
     from remote_mcp.adapter import ToolSpec, filter_remote, load_adapter  # type: ignore  # noqa: E402
     from remote_mcp.owner_auth import DEFAULT_REDIRECTS, SCOPE, OwnerAuthProvider  # type: ignore  # noqa: E402
+    from remote_mcp import upload as upload_routes  # type: ignore  # noqa: E402
 else:
     from .adapter import ToolSpec, filter_remote, load_adapter
     from .owner_auth import DEFAULT_REDIRECTS, SCOPE, OwnerAuthProvider
+    from . import upload as upload_routes
 
 SERVER_NAME = "0xbrain"
 SERVER_VERSION = "1.0.0-rc1"
@@ -131,7 +137,8 @@ def build_app(
         # Without an explicit verifier the low-level app mounts /mcp UNAUTHENTICATED (fail-open).
         token_verifier=ProviderTokenVerifier(provider),
         auth_server_provider=provider,
-        custom_starlette_routes=[Route("/healthz", healthz), *provider.routes()],
+        custom_starlette_routes=[Route("/healthz", healthz), *provider.routes(),
+                                 *upload_routes.routes(provider, public_url)],
     )
     assert_fail_closed(app)
     app.state.auth_provider = provider      # in-process introspection for tests only
@@ -163,6 +170,8 @@ def app_from_env() -> Starlette:
         raise SystemExit("missing BRAIN_STATE_DIR (persistent OAuth state); set "
                          "BRAIN_EPHEMERAL_AUTH=1 only for throwaway test servers")
     os.environ["BRAIN_REMOTE_SESSION"] = "1"
+    if state:   # private, short-lived staging for brain_ingest_file (outside the repo)
+        os.environ.setdefault("BRAIN_UPLOAD_DIR", str(Path(state) / "uploads"))
     return build_app(
         public_url=env["BRAIN_PUBLIC_URL"],
         owner_secret=env["BRAIN_OWNER_SECRET"],

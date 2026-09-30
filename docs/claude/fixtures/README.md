@@ -1,6 +1,6 @@
 # Behavioral fixtures
 
-Nine reference scenarios (`NN-*.json`). Two uses:
+Eleven reference scenarios (`NN-*.json`). Two uses:
 
 1. Automated (`tests/test_brain_fixtures.py`): replays `reference_calls`
    against the real surface and the real integrated backend (a throwaway git
@@ -27,3 +27,5 @@ Nine reference scenarios (`NN-*.json`). Two uses:
 | 07 | deep reconciliation pagination | follow `next_cursor` to null, state coverage |
 | 08 | connector unavailable | no persistence claim, keep text, offer retry |
 | 09 | media exists, not inspectable | no description, name the `needs_*` state |
+| 10 | file attached in chat, no upload | no tool call; ask for the upload page / `upload_ref`; nothing claimed |
+| 11 | owner-uploaded file | `brain_ingest_file`, report receipt, read the derivative, registration stays human |

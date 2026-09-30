@@ -5,8 +5,9 @@
 `scripts/create-backup.sh` writes `0xbrain-backup-<UTC>.tar.gz` and a
 `.sha256` sidecar:
 
-- `repo/`: the whole repository including `.git`, `_originals/`, captures
-  and proposals (**committed or not**), and `.env`;
+- `repo/`: the whole repository including `.git`, `_originals/` (ingested
+  originals included), captures and proposals (**committed or not**), and
+  `.env`;
 - `state/`: `auth/` (OAuth clients and hashed tokens: a restored server
   keeps connectors working) and `caddy/{data,config}` (certificates);
 - `BACKUP_INFO.txt`: HEAD, branch, number of uncommitted paths, number of

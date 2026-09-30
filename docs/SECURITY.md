@@ -10,11 +10,13 @@ no Pocket ID, no database.
 
 | Route | Auth | Content |
 |---|---|---|
-| `POST/GET /mcp` | bearer token, scope `brain`, resource `<BRAIN_PUBLIC_URL>/mcp` | the six `brain_*` tools only |
+| `POST/GET /mcp` | bearer token, scope `brain`, resource `<BRAIN_PUBLIC_URL>/mcp` | the seven `brain_*` tools only |
 | `/healthz` | none | `{"ok":true}` (liveness only) |
 | `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server` | none | OAuth discovery |
 | `/register`, `/authorize`, `/token`, `/revoke` | OAuth | SDK handlers |
 | `/owner/login` | pending-consent id + owner secret | consent form |
+| `GET /upload` | none | the upload form only (no data) |
+| `POST /upload` | owner secret (shared lockout) or bearer token valid for `/mcp` | stages one file, returns a single-use `upload_ref` |
 
 Everything else is 404/405. `tools/list` and `tools/call` (including
 `brain_status`) without a valid token get 401.
@@ -25,7 +27,7 @@ Everything else is 404/405. `tools/list` and `tools/call` (including
   bearer middleware (`assert_fail_closed`) and no other mount can reach the
   transport; `BRAIN_PUBLIC_URL` must be https (loopback only for tests);
   `BRAIN_STATE_DIR` is required; wildcard or non-https
-  `BRAIN_ALLOWED_REDIRECTS` entries refuse to start; the adapter is the six
+  `BRAIN_ALLOWED_REDIRECTS` entries refuse to start; the adapter is the seven
   semantic tools unless `BRAIN_MCP_ADAPTER=legacy` **and**
   `BRAIN_UNSAFE_REMOTE_LEGACY=1` (development only).
 - Exact redirect allowlist at registration (default:
@@ -58,6 +60,21 @@ Everything else is 404/405. `tools/list` and `tools/call` (including
   refuses to act there, and no module of the remote surface imports it or
   runs a shell.
 
+## File ingestion (hostile input)
+
+`brain_ingest_file` takes only an `upload_ref` (`upl-` + 256-bit token; on
+disk only its SHA-256 names the staged file). No path, URL or `file://`
+ingestion exists, so there is no SSRF surface. Uploaded filenames are
+metadata: basename only, control and bidi-override characters removed (ZWNJ
+kept); stored names are derived slugs under `_originals/remote-mcp/`.
+Only pdf/docx/pptx/xlsx/html/epub/txt/md, verified by structure, not by
+extension alone; ZIP containers bounded against decompression abuse;
+extraction in a subprocess with a timeout. Originals are created with
+`O_EXCL`, re-hashed, set read-only; existing paths, symlinked zones and
+modified tracked originals are refused at write and at commit time. Size,
+count and expiry bounds on staging; refs are single use. Details:
+[INGEST.md](INGEST.md).
+
 ## Proxy assumptions
 
 Caddy terminates TLS and forwards every path on the brain domain to
@@ -70,7 +87,7 @@ host and loopback in `Host`/`Origin`.
 
 ## Remote surface boundary
 
-- Six tools, exact (test-enforced). Never remote: `wiki_read`,
+- Seven tools, exact (test-enforced). Never remote: `wiki_read`,
   `wiki_get_media`, `wiki_mark_capture_reviewed`, `wiki_propose`, QMD's own
   MCP tools (`get`, `multi_get`, `query`, ...), any review/accept/promote.
 - Refs, not paths: `rec:`, `doc:`, `cap:`, `prop:`, `hist:` with an

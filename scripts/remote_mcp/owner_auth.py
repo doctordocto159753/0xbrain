@@ -211,6 +211,16 @@ class OwnerAuthProvider:
         self._failures = [t for t in self._failures if t > cutoff]
         return len(self._failures) >= LOGIN_MAX_FAILURES
 
+    def check_owner_secret(self, supplied: str) -> str:
+        """'ok' | 'wrong' | 'locked'. One lockout window shared by every form
+        that accepts the owner secret (consent page, upload page)."""
+        if self._lockout():
+            return "locked"
+        if not hmac.compare_digest(str(supplied).encode("utf-8"), self._secret):
+            self._failures.append(self._now())
+            return "wrong"
+        return "ok"
+
     async def _login(self, request: Request) -> Response:
         pid = request.query_params.get("p", "")
         entry = self._pending.get(pid)
@@ -223,9 +233,10 @@ class OwnerAuthProvider:
         if self._lockout():
             return self._page("<h1>Too many attempts</h1><p>Wait a few minutes.</p>", 429)
         form = await request.form()
-        supplied = str(form.get("secret", "")).encode("utf-8")
-        if not hmac.compare_digest(supplied, self._secret):
-            self._failures.append(self._now())
+        verdict = self.check_owner_secret(str(form.get("secret", "")))
+        if verdict == "locked":
+            return self._page("<h1>Too many attempts</h1><p>Wait a few minutes.</p>", 429)
+        if verdict != "ok":
             return self._form(client, params, pid, error="Wrong secret.", status=401)
         self._pending.pop(pid, None)
         code = secrets.token_urlsafe(32)

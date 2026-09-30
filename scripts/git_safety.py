@@ -223,14 +223,15 @@ def _clear_failure(root: Path) -> None:
         pass
 
 
-def uncommitted_state(root: Path) -> dict:
-    """Uncommitted noncanonical files + last recorded write failure.
+def uncommitted_state(root: Path, prefixes: Iterable[str] = NONCANONICAL_PREFIXES) -> dict:
+    """Uncommitted files under `prefixes` (default: noncanonical zones) +
+    last recorded write failure.
 
     Source of truth is `git status`; the journal only adds the reason.
     """
     root = Path(root)
     out = _git(root, "status", "--porcelain=v1", "-z", "-uall", "--",
-               *[p.rstrip("/") for p in NONCANONICAL_PREFIXES])
+               *[p.rstrip("/") for p in prefixes])
     files: list[dict] = []
     if out.returncode == 0:
         entries = out.stdout.split("\0")
@@ -279,9 +280,13 @@ def _commit_paths(root: Path, paths: list[str], message: str) -> tuple[bool, str
 def locked_write_commit(root: Path, write: Callable[[], Iterable[str | Path]],
                         message: str,
                         validate: Callable[[], list[str]] | None = None,
-                        timeout: float = LOCK_WAIT_SECONDS) -> dict:
+                        timeout: float = LOCK_WAIT_SECONDS,
+                        allow: Callable[[str], bool] = is_noncanonical) -> dict:
     """The K9 sequence. `write()` performs the durable write(s) and returns
     the written paths; `validate()` returns error strings (empty = ok).
+    `allow(path)` is the write class's path policy: noncanonical zones by
+    default; the held-intake class (brain_ingest_file) passes its own,
+    narrower policy (new files only; see scripts/brain_surface/ingest.py).
 
     Always returns a dict: {durable, committed, commit, paths, stage, error,
     uncommitted}. Raises GovernanceError only for refusals BEFORE any write
@@ -291,7 +296,7 @@ def locked_write_commit(root: Path, write: Callable[[], Iterable[str | Path]],
     root = Path(root)
     with BrainLock(root, timeout=timeout):
         written = [_rel(root, p) for p in write()]
-        bad = [p for p in written if not is_noncanonical(p)]
+        bad = [p for p in written if not allow(p)]
         if bad:
             # The write already happened; never delete it, but never commit it.
             _record_failure(root, "refused-canonical", f"canonical paths written: {bad}", written)

@@ -1,7 +1,7 @@
 # 0xBrain documentation: start here
 
 0xBrain is a Living Wiki instance (a governed, Git-versioned archive with an
-authority hierarchy) that Claude can use remotely through six semantic MCP
+authority hierarchy) that Claude can use remotely through seven semantic MCP
 tools. The server is model-free: search is lexical (QMD BM25) plus exact
 text; all interpretation happens in Claude and stays candidate-tier until a
 human promotes it.
@@ -13,6 +13,7 @@ human promotes it.
 | know what to ask Claude, day to day | [USAGE.md](USAGE.md) |
 | understand search and its limits | [../SEARCH_GUIDE.md](../SEARCH_GUIDE.md) |
 | understand capture (verbatim intake) | [CAPTURE.md](CAPTURE.md) |
+| add a document exactly (original bytes) | [INGEST.md](INGEST.md) |
 | review and promote Claude's proposals | [PROPOSALS_AND_REVIEW.md](PROPOSALS_AND_REVIEW.md) |
 | understand reconciliation packages | [RECONCILIATION.md](RECONCILIATION.md) |
 | back up / restore / move hosts | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) |

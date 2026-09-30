@@ -1,6 +1,6 @@
-# Tool reference and usage patterns (K3, integrated)
+# Tool reference and usage patterns (K3 + brain_ingest_file)
 
-Six tools, names and arguments frozen. Schemas: `scripts/brain_surface/contract.py`
+Seven tools: the six frozen K3 tools plus `brain_ingest_file`. Schemas: `scripts/brain_surface/contract.py`
 (`TOOLS`). Every result is a JSON object with `ok`; failures carry
 `error: {code, message, ...}` (the MCP result is also marked `isError`) and,
 for writes, `persisted: false`.
@@ -78,6 +78,27 @@ A path (`03-objects/x.md`, `../x`, `/etc/...`, `C:\...`) is rejected with
   stored and linked to it.
 - Errors (`E_BAD_ARGUMENTS`, `E_TOO_LARGE`, `E_UNAVAILABLE`, ...) mean not stored.
 
+## brain_ingest_file(upload_ref, title?, description?)
+
+- For source documents the owner supplies (pdf, docx, pptx, xlsx, html,
+  epub, txt, md). The owner first uploads the file at
+  `https://<domain>/upload` (owner secret or bearer token) and gives you the
+  returned `upload_ref` (`upl-` + 43 characters, single use, expires after an
+  hour). There is no file-content, path or URL argument: MCP tool calls carry
+  only JSON arguments, so file bytes cannot travel through you.
+- Receipt: `source_ref` (= `original_ref`: the original is identified by its
+  source record; originals are not readable through the connector),
+  `derivative_ref` (`doc:`; null when there is no usable text), `sha256`,
+  `bytes`, `mime_type`, `filename`, `holdings_tier` (`pending-registration`),
+  `extraction` (`complete` | `needs_ocr` | `preserved_only`), `duplicate`,
+  `validation`, `commit_state` (`committed` | `persisted_uncommitted` |
+  `not_needed` for a duplicate).
+- `duplicate: true`: identical bytes were already held; the existing refs are
+  returned and nothing new is stored.
+- Errors, nothing stored: `E_BAD_UPLOAD_REF`, `E_UPLOAD_NOT_FOUND` (unknown,
+  expired or already used), `E_UNSUPPORTED_TYPE`, `E_TYPE_MISMATCH`,
+  `E_ARCHIVE_ABUSE`, `E_EXISTS`.
+
 ## brain_reconcile_context(seed_ref?, query?, depth?, cursor?, sections?, expand?)
 
 - Needs `seed_ref` (`rec:`, `doc:`, `cap:` or `hist:`) and/or `query`.
@@ -142,6 +163,7 @@ noncanonical writes not yet in Git + the last commit failure), `git`
 
 `E_BAD_ARGUMENTS`, `E_UNKNOWN_ARGUMENT`, `E_BAD_REF`, `E_NOT_FOUND`,
 `E_TOO_LARGE`, `E_BAD_CURSOR`, `E_STALE_CURSOR`, `E_PROPOSAL_REJECTED`,
+the ingest codes above,
 `E_UNAVAILABLE`, `E_UNKNOWN_TOOL`, `E_INTERNAL`, plus capture codes such as
 `E_EMPTY`. Transport/auth failures happen before this layer; when a call
 cannot be made at all, treat it as "connector unavailable".
