@@ -447,3 +447,23 @@ def test_status_is_truthful_and_private(env):
     assert str(root) not in blob and "SECRET" not in blob.upper().replace("SECRETS", "")
     again = s.call("brain_status", {})
     assert again["validation"]["cached"] is True
+
+
+def test_crlf_capture_survives_commit_and_fresh_clone(env, tmp_path):
+    """.gitattributes marks captures -text: Git must not normalise CRLF on
+    commit or checkout, or a restored/cloned capture would fail its SHA-256."""
+    root, s = env
+    text = "line one\r\n## Review notes\r\nمتن فارسی\r\n"
+    out = s.call("brain_capture", {"text": text})
+    assert out["commit_state"] == "committed"
+    rel = git(root, "show", "--name-only", "--format=", "HEAD").split()[0]
+    original = (root / rel).read_bytes()
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(root), str(clone)], check=True)
+    assert (clone / rel).read_bytes() == original
+    assert b"\r\n" in original
+    import wiki_capture as wc
+    fm, sections = wc.parse_record_text(wc.read_record_file(clone / rel))
+    import hashlib
+    assert sections["User-supplied text"] == text
+    assert hashlib.sha256(text.encode()).hexdigest() == fm["sha256"] == out["sha256"]
