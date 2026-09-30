@@ -24,6 +24,7 @@ scripts/capture/fixtures/
 # Secrets and machine-specific config
 .env
 .env.*
+!.env.example
 *.local.json
 
 # OS noise

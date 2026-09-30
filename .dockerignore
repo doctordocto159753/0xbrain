@@ -1,0 +1,5 @@
+# Build context is intentionally tiny: only what the image itself needs.
+*
+!requirements.txt
+!deploy/
+deploy/tests/

@@ -1,0 +1,17 @@
+# Everything on the brain domain goes to the brain server, unfiltered: the remote
+# MCP endpoint, OAuth discovery (/.well-known/*), and any auth endpoints it serves.
+# Env values come from .env. BRAIN_TLS_DIRECTIVE is empty (public ACME) or "tls internal"
+# (disposable tests only).
+{
+	email {$BRAIN_OWNER_EMAIL}
+}
+
+{$BRAIN_DOMAIN} {
+	{$BRAIN_TLS_DIRECTIVE}
+	reverse_proxy brain:8080 {
+		flush_interval -1
+	}
+}
+
+# Optional external auth site (written by install.sh when --auth-domain is given).
+import /etc/caddy/conf.d/*.caddy
