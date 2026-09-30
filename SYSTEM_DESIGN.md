@@ -137,7 +137,7 @@ See `INSTANTIATE.md` for the full checklist. Summary:
 | `validate_content_release.py` | populated-layer gate: minimum counts, claim fields, orphan records, Base YAML, benchmark | operational |
 | `check_against_baseline.py` | shared local-hook/CI gate: fail only on NEW errors vs `.githooks/known-baseline-errors.txt` | operational |
 | `wiki_capture.py` (+ `capture/`) | governed multimodal capture: hash, dedupe, atomic store, state machine | operational |
-| `wiki_mcp_server.py` | local stdio MCP: `wiki_read`, `wiki_search`, `wiki_propose` — writes go only to `_proposals/` | operational (local only) |
+| `wiki_mcp_server.py` | local stdio MCP (not the remote surface): `wiki_read`, `wiki_search`, `wiki_propose` — writes go only to `_proposals/` | operational |
 | `remote_mcp/server.py` (+ `owner_auth.py`, `adapter.py`) | remote MCP: streamable HTTP + single-owner OAuth 2.1; exactly the six `brain_*` tools; fail-closed | operational |
 | `brain_surface/` | K3 contract (`contract.py`), public ref grammar (`refs.py`), envelopes (`surface.py`), the one backend wiring search/capture/governance (`backend.py`) | operational |
 | `search_lexical.py` | model-free search: QMD BM25 (typed `lex:`, `--no-rerank`) + normalised exact; explicit scopes; refuses model paths | operational |
