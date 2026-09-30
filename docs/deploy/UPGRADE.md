@@ -37,4 +37,3 @@ the upstream kit by one commit and a later merge can conflict in those files. Th
 in that case; resolve on a branch, run the validators, then merge. This is a structural property of the
 existing kit, flagged for the integration agent rather than worked around here.
 
-<!-- upgrade rehearsal marker -->

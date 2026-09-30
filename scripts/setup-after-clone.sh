@@ -11,6 +11,7 @@ skip_qmd=0; [ "${1:-}" = "--skip-qmd" ] && skip_qmd=1
 command -v python3 >/dev/null || { echo "python3 (3.12+) is required" >&2; exit 1; }
 python3 -m pip install --user -r requirements.txt
 git config core.hooksPath .githooks
+command -v python >/dev/null || echo "note: .githooks call `python`; on Debian/Ubuntu install python-is-python3"
 python3 scripts/validate_repo.py --full
 python3 scripts/validate_content_release.py
 

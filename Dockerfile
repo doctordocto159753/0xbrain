@@ -12,6 +12,8 @@ ARG PYTHON_BASE=python:${PYTHON_VERSION}-slim-bookworm
 
 FROM node:${NODE_VERSION}-bookworm-slim AS qmd
 ARG QMD_VERSION
+# Lexical search never loads llama.cpp: drop the GPU backends (~640 MB). CPU stubs stay so qmd still starts.
+ARG PRUNE_GPU=1
 # Optional TLS-inspecting-proxy CA: docker build --secret id=extra_ca,src=/path/ca-bundle.crt
 RUN --mount=type=secret,id=extra_ca,required=false \
     if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
