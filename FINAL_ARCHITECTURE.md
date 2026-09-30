@@ -58,6 +58,12 @@ owner shell (human context)
 
 ## Contracts
 
+- **brain_ingest_file (post-rc1 addition):** `brain_ingest_file(upload_ref,
+  title?, description?)` after an owner-authenticated `POST /upload`. Held
+  intake only: exact original (new, read-only file under
+  `_originals/remote-mcp/`), `pending-registration` source record, `to_md.py`
+  derivative, held counters; registration stays human. Adds one K9 write
+  class (new files only + counters), see `docs/INGEST.md`.
 - **K3 remote surface:** `brain_search(query, mode, scope, n)`,
   `brain_read(ref)`, `brain_capture(text, language_hint)`,
   `brain_reconcile_context(seed_ref, query, depth, cursor, sections, expand)`,

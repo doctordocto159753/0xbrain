@@ -51,7 +51,7 @@ to every wiki instantiated from this kit.
 - kit version: `1.2.0`
 - Current corpus snapshot: `wiki-corpus-empty`
 - Registered source artifacts: 0 (empty kit — instance registries start empty)
-- Artifacts held: 0 (empty kit — nothing under `_originals/` yet)
+- Artifacts held: 0 (files under `_originals/`; registered or held pending registration)
 - entry page: `HOME.md`
 - instantiation guide: `INSTANTIATE.md`
 

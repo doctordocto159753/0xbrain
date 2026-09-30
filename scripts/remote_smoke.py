@@ -124,6 +124,10 @@ async def smoke(args) -> dict:
                 report["status"] = {k: st.get(k) for k in ("ok", "snapshot", "degraded",
                                                            "degraded_reasons")}
                 report["status_uncommitted"] = st.get("uncommitted", {}).get("count")
+                if args.read_ref:
+                    rd = text(await s.call_tool("brain_read", {"ref": args.read_ref}))
+                    report["read_ref"] = {"ok": rd.get("ok"), "tier": rd.get("tier"),
+                                          "bytes": rd.get("bytes")}
                 if args.status_only:
                     return report
                 cap = text(await s.call_tool("brain_capture", {
@@ -155,6 +159,17 @@ async def smoke(args) -> dict:
                         "ok", "duplicate", "source_ref", "derivative_ref", "sha256", "bytes",
                         "extraction", "commit_state", "error")}
                     report["ingest"]["local_sha256"] = hashlib.sha256(raw).hexdigest()
+                    if args.ingest_phrase:
+                        hits = text(await s.call_tool("brain_search", {
+                            "query": args.ingest_phrase, "mode": "exact", "scope": "canonical"}))
+                        refs = [h.get("ref") for h in
+                                hits.get("groups", {}).get("canonical", {}).get("results", [])]
+                        report["ingest"]["search_found_derivative"] = ing.get("derivative_ref") in refs
+                    if ing.get("derivative_ref"):
+                        rd = text(await s.call_tool("brain_read", {"ref": ing["derivative_ref"]}))
+                        report["ingest"]["derivative_has_sha"] = ing.get("sha256", "") in rd.get(
+                            "content", "")
+
                     report["ingest"]["upload_status"] = up.status_code
                 if args.evidence:
                     prop = text(await s.call_tool("brain_propose", {
@@ -179,6 +194,8 @@ def main(argv=None) -> int:
     ap.add_argument("--evidence", help="rec:<id> to cite in a test proposal")
     ap.add_argument("--quote", help="verbatim quote from --evidence (>= 20 chars)")
     ap.add_argument("--ingest-file", help="upload and ingest this file exactly")
+    ap.add_argument("--ingest-phrase", help="exact phrase expected in the ingested file's text")
+    ap.add_argument("--read-ref", help="brain_read this ref (e.g. after a restart)")
     args = ap.parse_args(argv)
     try:
         report = asyncio.run(smoke(args))
@@ -194,6 +211,10 @@ def main(argv=None) -> int:
         if args.ingest_file:
             ing = report["ingest"]
             ok = ok and ing.get("ok") and ing.get("sha256") == ing.get("local_sha256")
+            if args.ingest_phrase:
+                ok = ok and ing.get("search_found_derivative")
+        if args.read_ref:
+            ok = ok and report["read_ref"].get("ok")
     report["ok"] = bool(ok)
     print(json.dumps(report, indent=1, ensure_ascii=False))
     return 0 if ok else 1
