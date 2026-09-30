@@ -26,8 +26,23 @@ From the wiki repo root:
 python scripts/file-to-md/to_md.py "C:/path/file.pdf" -o "C:/path/file.extracted.md"
 ```
 
-It prints a JSON summary (method, chars, token estimate, needs_ocr flag).
-Done = exit 0 + md exists.
+It prints a JSON summary (method, chars, token estimate, sha256,
+needs_ocr flag). Done = exit 0 + md exists.
+
+Provenance header written at the top of every derivative:
+
+```
+# Extracted from <original filename>
+
+> method: <extractor> | bytes: <size> | sha256: <64-hex of the ORIGINAL file> | date: <YYYY-MM-DD>[ | detail]
+> quality: <note>            (only when not clean; NEEDS-OCR for scanned PDFs)
+```
+
+The `sha256` is the hash of the original file's bytes, i.e. the same value
+the source record and `MATERIALS_INDEX.jsonl` carry (`sha256`, checked by
+`validate_repo.py --full`). It ties the derivative to exactly one original;
+it is not a second checksum system. A mismatch means the derivative was
+made from a different file: re-extract, do not edit the header.
 
 In the archive flow, the extracted md becomes the **searchable derivative**
 under `02-sources/text/`, linked from the source record's

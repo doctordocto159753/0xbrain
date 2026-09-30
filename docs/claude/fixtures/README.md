@@ -3,7 +3,9 @@
 Nine reference scenarios (`NN-*.json`). Two uses:
 
 1. Automated (`tests/test_brain_fixtures.py`): replays `reference_calls`
-   against the real surface with a fake backend, checks results, forbidden
+   against the real surface and the real integrated backend (a throwaway git
+   wiki seeded from `setup`; placeholder ids such as `cap-fake-0001` are
+   mapped to the ids the server actually returns), checks results, forbidden
    tools, and lints `reference_reply` (no persistence claim without a
    successful persisted write; cited refs must come from tool results;
    required/forbidden phrases). This checks the tools and the reference

@@ -20,6 +20,12 @@ Subcommands:
                   checksummed witness reference) for one source record.
 
 Outputs land under _exports/interchange/ (git-ignored runtime output).
+
+PRIVACY: these are FULL archival exports. They may contain private or
+non-public record titles, identifiers, labels, relation participants and
+provenance metadata. They are not safe for public sharing unless explicitly
+filtered and reviewed. The publication valve is export_public.py
+(sensitivity-reviewed, written outside the repository).
 """
 from __future__ import annotations
 
@@ -321,6 +327,9 @@ def main() -> int:
     p.add_argument("--source-id", required=True)
     p.set_defaults(fn=cmd_tei)
     args = ap.parse_args()
+    if args.cmd in ("prov", "skos", "tei"):
+        print("NOTE: full archival export; may contain private records. Not for public "
+              "sharing without review (use scripts/export_public.py).", file=sys.stderr)
     return args.fn(args)
 
 

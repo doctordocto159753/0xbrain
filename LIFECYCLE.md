@@ -72,6 +72,11 @@ python scripts/export_interchange.py prov     # PROV-O graph export
 python scripts/export_public.py               # sensitivity-reviewed public export (outside repo)
 ```
 
+Interchange exports (PROV-O, SKOS, TEI) are full archival exports: they may
+contain private or non-public record titles, content and metadata and are
+not safe for public sharing unless explicitly filtered and reviewed.
+`export_public.py` is the only publication valve.
+
 A numeric threshold is a defect detector, not a quality certificate. Static
 pass ≠ local operational pass; GitHub Actions green + local validation pass
 are both required before reporting a release-state change.

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SHELL = [ROOT / "install.sh", ROOT / "deploy/lib.sh", ROOT / "deploy/entrypoint.sh",
          *sorted((ROOT / "scripts").glob("*.sh"))]
 DEPLOY_TEXT = [ROOT / "Dockerfile", ROOT / "compose.yaml", ROOT / "Caddyfile",
-               ROOT / ".env.example", *SHELL, *sorted((ROOT / "docs/deploy").glob("*.md"))]
+               ROOT / ".env.example", *SHELL, *sorted((ROOT / "docs").glob("*.md"))]
 MODEL_WORDS = re.compile(r"\b(torch|faster-whisper|whisper|rapidocr|onnxruntime|transformers|"
                          r"sentence-transformers|openai|llama-cpp-python)\b", re.I)
 
@@ -71,14 +71,20 @@ class DeployStatic(unittest.TestCase):
         and the external-IdP seam are gone from every deploy file."""
         blob = "".join(f.read_text() for f in DEPLOY_TEXT)
         for gone in ("BRAIN_SECRET_KEY", "BRAIN_OWNER_SETUP_TOKEN", "BRAIN_AUTH_IMAGE",
-                     "BRAIN_AUTH_DOMAIN", "BRAIN_SERVER_CMD", "auth-idp", "pocket", "supergateway",
-                     "fastmcp"):
+                     "BRAIN_AUTH_DOMAIN", "BRAIN_SERVER_CMD", "auth-idp"):
             self.assertNotIn(gone.lower(), blob.lower(), gone)
         compose = (ROOT / "compose.yaml").read_text()
         for need in ("BRAIN_STATE_DIR: /state/auth", "BRAIN_REMOTE_SESSION: \"1\"",
                      "BRAIN_MCP_ADAPTER: semantic", "WIKI_QMD_HOME: /state/qmd"):
             self.assertIn(need, compose)
         self.assertIn("BRAIN_OWNER_SECRET", (ROOT / "install.sh").read_text())
+
+    def test_no_rejected_stack_is_installed(self):
+        deps = "".join((ROOT / f).read_text() for f in ("requirements.txt", "requirements-remote.txt",
+                                                         "deploy/requirements-image.txt", "Dockerfile",
+                                                         "compose.yaml"))
+        for gone in ("fastmcp", "supergateway", "pocket-id", "pocketid"):
+            self.assertNotIn(gone, deps.lower())
 
     def test_entrypoint_starts_real_server_and_stub_only_on_explicit_opt_in(self):
         ep = (ROOT / "deploy/entrypoint.sh").read_text()

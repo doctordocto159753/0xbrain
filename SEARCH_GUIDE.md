@@ -120,6 +120,27 @@ phrase match, not fuzzy: `حافظه جمعی` does not match `حافظه‌ی �
 4. Load-bearing hit: open the record, then its source record, then the
    immutable original (see section 1).
 
+## 4b. Remote (`brain_search`)
+
+The remote tool is a thin wrapper over the same `search_lexical.search`
+(same modes, scopes, groups, tiers, ladder). Differences: results carry
+public refs (`rec:`, `doc:`, `cap:`) instead of paths; the server refreshes
+a stale index (or registers the collections on a fresh/restored install)
+before a lexical query, so a new capture is findable immediately; without
+QMD, lexical mode answers `E_UNAVAILABLE` and exact mode still works.
+
+Naming nuance: scope `canonical` is the governed non-capture side
+(canonical records, source records, derivatives). It does not mean every
+hit is accepted canonical evidence: each hit keeps its `tier` and
+`authority_level` (a `derivative` is a candidate passage, level 5).
+
+Known limitations (model-free by design): no cross-language retrieval (a
+Persian query does not find an English record with the same meaning);
+exact/phrase edge cases around ezafe and ZWNJ (section 4); natural-language
+questions have low lexical recall. The Claude standing instructions tell
+Claude to reformulate iteratively (keywords, both languages, spelling
+variants, exact mode). No local semantic model is added to compensate.
+
 ## 5. Boundaries
 
 - `_originals/` is not indexed directly.

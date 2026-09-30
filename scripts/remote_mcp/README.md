@@ -39,51 +39,57 @@ Redis, database, broker, external IdP, or local model.
    Claude. Wrong secret: 401; after 5 failures in 300 s the form answers 429.
 5. `/token` issues an opaque access token (1 h, in memory, bound to
    `resource=<public>/mcp`) and a rotating refresh token (30 d).
-6. Restart: clients and SHA-256 hashes of refresh tokens persist in
-   `$BRAIN_STATE_DIR/oauth_state.json` (mode 0600); access tokens do not.
+6. Restart: clients and SHA-256 hashes of access and refresh tokens persist
+   in `$BRAIN_STATE_DIR/oauth_state.json` (mode 0600, directory 0700), so a
+   connected client continues without a new consent.
 
 Unauthenticated callers reach only `/healthz` (`{"ok":true}`), OAuth
 endpoints, and the login form. `tools/list` and status require a token.
+At most 64 pending consents and 32 registered clients are kept.
 
-## Tool surface at this stage
+## Tool surface (integrated)
 
-`load_adapter()` returns the 12 existing stdio tools unchanged (business logic
-reused). The transport removes `REMOTE_DENYLIST` (`wiki_mark_capture_reviewed`)
-from any adapter, enforcing "remote MCP never performs human review".
-Handlers are blocking; the transport runs them in worker threads. Swap the
-surface with `BRAIN_MCP_ADAPTER=package.module:callable` returning
-`list[ToolSpec]`.
+`load_adapter()` returns exactly the six semantic K3 tools
+(`brain_search`, `brain_read`, `brain_capture`, `brain_reconcile_context`,
+`brain_propose`, `brain_status`) from `scripts/brain_surface` over the one
+`WikiBackend` (search: `search_lexical`; capture: `wiki_capture` + K9;
+proposals/reconciliation/status: Agent E modules). `BRAIN_MCP_ADAPTER`
+accepts only `semantic` (default) or `legacy`; `legacy` (the stdio `wiki_*`
+tools) is development-only and additionally needs
+`BRAIN_UNSAFE_REMOTE_LEGACY=1`. Arbitrary module imports are not supported.
+`REMOTE_DENYLIST` removes review, path-based read/media and QMD tool names
+from any adapter. Handlers are blocking; the transport runs them in worker
+threads; a result `{"ok": false}` is returned with `isError`.
+
+The server runs stateless streamable HTTP (no MCP session to lose on
+restart), refuses to start unless `/mcp` is wrapped by the bearer
+middleware, and sets `BRAIN_REMOTE_SESSION=1` for its process.
 
 ## Run
 
 ```bash
 export BRAIN_PUBLIC_URL=https://brain.example.com   # exact public origin, TLS terminated in front
 export BRAIN_OWNER_SECRET='<>=16 chars, from your secret store>'
-export BRAIN_STATE_DIR=/var/lib/0xbrain-oauth        # outside the repo
-python scripts/remote_mcp/server.py                  # binds 127.0.0.1:8787
+export BRAIN_STATE_DIR=/var/lib/0xbrain/auth        # persistent OAuth state, outside the repo
+python scripts/remote_mcp/server.py                 # binds 127.0.0.1:8787 (BRAIN_HOST/BRAIN_PORT)
 ```
 
-Behind a reverse proxy set `BRAIN_FORWARDED_ALLOW_IPS` to the proxy address and
-forward `Host`. Register the connector in Claude with URL
-`https://brain.example.com/mcp`.
-
-## Real-Claude validation checklist (NOT yet proven)
-
-No public HTTPS endpoint was available in this session, so no official Claude
-connector test was run. To prove it:
-
-1. Expose the server over public HTTPS (tunnel or host) and set `BRAIN_PUBLIC_URL` to that origin.
-2. `curl -i -X POST $URL/mcp -H 'Accept: application/json, text/event-stream' -d '{}'` returns 401 with `resource_metadata`.
-3. `curl $URL/.well-known/oauth-protected-resource/mcp` and `.../oauth-authorization-server` return JSON whose URLs equal `$URL`.
-4. In Claude (web and mobile) add a custom connector with `$URL/mcp`; complete the owner login.
-5. If the DCR step fails with `invalid_redirect_uri`, read the redirect URI from the server log/response and add it to `BRAIN_ALLOWED_REDIRECTS`; record it here.
-6. Confirm tools list appears, one exact search and one text capture succeed, and `wiki_mark_capture_reviewed` is absent.
-7. Revoke from the connector settings; confirm the next call is 401.
+Deployment (Docker + Caddy) sets all of this: `docs/INSTALL.md`. Connect
+Claude with `https://brain.example.com/mcp`: `docs/CONNECT_CLAUDE.md`.
+Security review: `docs/SECURITY.md`.
 
 ## Tests
 
-- `tests/test_mcp_stdio_characterization.py` (13): pins current stdio behavior.
-- `tests/test_mcp_remote.py` (11): official client over real HTTP; skipped if `mcp` is not installed.
+- `tests/test_mcp_stdio_characterization.py`: pins the local stdio behavior.
+- `tests/test_mcp_remote.py`: official client over real HTTP (OAuth flow,
+  DCR allowlist, lockout, rotation/revocation/restart persistence, denylist,
+  fail-closed adapter selection).
+- `tests/test_remote_semantic.py`: the production surface end to end over
+  HTTP on a real git wiki (exact six tools, capture/search/read/reconcile/
+  propose, K9 commits) plus PKCE, code reuse, open redirect, resource and
+  scope binding, state-file privacy, bounded state, startup fail-closed,
+  remote-session review refusal.
+- Real official-Claude connection: `docs/CONNECT_CLAUDE.md` (release gate).
 
 A regression guard exists for a fail-open trap: the low-level SDK app mounts
 `/mcp` unauthenticated unless `token_verifier` is passed explicitly

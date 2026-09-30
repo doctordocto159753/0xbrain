@@ -19,7 +19,8 @@ to every wiki instantiated from this kit.
    derivatives collection for candidate passages; original files for exact
    form.
 6. QMD scores organize attention and are never evidence.
-7. Side-effect workflows are manually invoked: `/wiki-intake`,
+7. Side-effect workflows are manually invoked (they assume a
+   filesystem-attached Claude Code, not the remote connector): `/wiki-intake`,
    `/wiki-reconcile`, `/wiki-write`, `/wiki-validate`, `/wiki-handoff`.
 8. Apply a supplied content change only through its `PATCH_MANIFEST.json`.
    Do not broaden its scope.
@@ -29,7 +30,10 @@ to every wiki instantiated from this kit.
     minimum run:
     - `python scripts/validate_repo.py --full`
     - `python scripts/validate_content_release.py` (once populated)
-11. End consequential work with a handoff containing changed files,
+11. In a conversation using the remote connector, never claim persistence or
+    retrieval without the tool result (`docs/claude/STANDING_INSTRUCTIONS.md`
+    section 1); canonical promotion stays a human CLI step (K9).
+12. End consequential work with a handoff containing changed files,
     decisions, validation output, unresolved findings, negative constraints,
     and the next exact operation.
 

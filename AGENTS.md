@@ -24,17 +24,24 @@ those remain canonical.
 ## What you MAY do without further permission
 
 - **Read** any file in the repository.
-- **Search** via qmd (`qmd search`, deterministic BM25) for orientation.
+- **Search** model-free via `python scripts/search_lexical.py` (QMD BM25 +
+  exact; `SEARCH_GUIDE.md`) for orientation.
 - **Propose**: append a JSONL record to `_proposals/proposals.jsonl`
   (`{id, received, kind, authority_tier: "candidate", status: "new", body}`),
-  or use MCP tool `wiki_propose` (server: `scripts/wiki_mcp_server.py`).
+  or use MCP tool `wiki_propose` (local stdio server
+  `scripts/wiki_mcp_server.py`), or, remotely, `brain_propose` (structured
+  fields, verbatim evidence, validated before it is queued).
   Proposals are inert until a human moves them. That is the design.
 
 ## Machine contract
 
-- **MCP server:** `scripts/wiki_mcp_server.py` (stdio JSON-RPC). Each machine
-  registers its own interpreter path in its local harness config; never
-  commit machine-specific interpreter paths.
+- **MCP servers:** local harnesses may register `scripts/wiki_mcp_server.py`
+  (stdio JSON-RPC; each machine registers its own interpreter path in its
+  local harness config; never commit machine-specific interpreter paths).
+  Remote conversations reach the archive only through the six `brain_*`
+  tools of `scripts/remote_mcp/server.py` (`docs/claude/TOOL_USAGE.md`;
+  standing instructions: `docs/claude/STANDING_INSTRUCTIONS.md`). Review,
+  acceptance and promotion are human-only (`scripts/brain_review.py`).
 - **Validation gates:** `python scripts/validate_repo.py [--full]` and
   (once populated) `python scripts/validate_content_release.py`.
   Deterministic; no network, no model calls.

@@ -29,6 +29,10 @@ proposals and canonical commits made after the upgrade stay. If the revert
 conflicts with later changes it aborts cleanly and points at the
 pre-upgrade backup (`restore-backup.sh --force`).
 
+To re-apply the same upstream code after a rollback, revert the revert
+(`git revert <revert-commit>`) before the next `upgrade.sh`: Git considers
+the reverted commits already merged.
+
 ## Known friction
 
 `instantiate.py` rewrites the record prefix inside some code and docs, so an

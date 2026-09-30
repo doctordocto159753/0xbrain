@@ -34,7 +34,10 @@ It ships everything needed to start a **new wiki instance** for any subject:
   public export tool that never writes inside the repo — shipped and
   available, not yet exercised against a populated instance (see §6 for
   the per-script status);
-- an MCP server exposing read / search / propose to any AI harness;
+- a local stdio MCP server exposing read / search / propose to any AI
+  harness, and a remote MCP server (streamable HTTP, single-owner OAuth)
+  exposing six semantic `brain_*` tools to official Claude (see
+  `FINAL_ARCHITECTURE.md`);
 - a controlled vocabulary so status words mean the same thing everywhere.
 
 **This repo is not itself a populated wiki.** It is the empty, validated
@@ -134,8 +137,15 @@ See `INSTANTIATE.md` for the full checklist. Summary:
 | `validate_content_release.py` | populated-layer gate: minimum counts, claim fields, orphan records, Base YAML, benchmark | operational |
 | `check_against_baseline.py` | shared local-hook/CI gate: fail only on NEW errors vs `.githooks/known-baseline-errors.txt` | operational |
 | `wiki_capture.py` (+ `capture/`) | governed multimodal capture: hash, dedupe, atomic store, state machine | operational |
-| `wiki_mcp_server.py` | MCP: `wiki_read`, `wiki_search`, `wiki_propose` — writes go only to `_proposals/` | operational |
-| `export_interchange.py` | PROV-O JSON-LD, SKOS, TEI skeletons — derived views, never the record | available (unexercised) |
+| `wiki_mcp_server.py` | local stdio MCP: `wiki_read`, `wiki_search`, `wiki_propose` — writes go only to `_proposals/` | operational (local only) |
+| `remote_mcp/server.py` (+ `owner_auth.py`, `adapter.py`) | remote MCP: streamable HTTP + single-owner OAuth 2.1; exactly the six `brain_*` tools; fail-closed | operational |
+| `brain_surface/` | K3 contract (`contract.py`), public ref grammar (`refs.py`), envelopes (`surface.py`), the one backend wiring search/capture/governance (`backend.py`) | operational |
+| `search_lexical.py` | model-free search: QMD BM25 (typed `lex:`, `--no-rerank`) + normalised exact; explicit scopes; refuses model paths | operational |
+| `evidence_audit.py` / `brain_proposals.py` | proposal schema + evidence validation (one validator), candidate queue append | operational |
+| `git_safety.py` | K9: lock, durable write, validate, pathspec commit; uncommitted state | operational |
+| `reconcile_context.py` | K5 reconciliation packages (focused/deep, paged, no verdict) | operational |
+| `brain_review.py` (+ `review.sh`) | human-only review, acceptance and canonical promotion CLI | operational |
+| `export_interchange.py` | PROV-O JSON-LD, SKOS, TEI skeletons — derived views, never the record; full archival exports that may contain private material, not for public sharing without review | available (unexercised) |
 | `export_public.py` | sensitivity-reviewed public export OUTSIDE the repo | available (unexercised) |
 | `search_lexical.py` | model-free search: QMD lexical (BM25, typed `lex:`, `--no-rerank`) + normalisation-aware exact fallback; scopes `canonical`/`captures`/`all`; index configure/refresh/freshness; refuses embed/vsearch/bare query | operational |
 | `run_lexical_eval.py` / `prove_search_model_free.py` | lexical evaluation over the synthetic fixture in `tests/search_eval/`; clean-room no-model proof (empty HOME, no network) | operational |
