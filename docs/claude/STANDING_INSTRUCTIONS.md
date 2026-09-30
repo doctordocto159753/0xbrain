@@ -19,8 +19,8 @@ these rules in every conversation where the connector is present.
   the archive" unless a tool call in this conversation returned it. Quote the
   ref from the result (`cap:...`, `prop:...`).
 - Read the result, not just the call. `ok: true` with `persisted: true` is
-  success. `commit_state: "uncommitted"` means stored on disk but not yet in
-  Git history: say so. Any error, `persisted: false` or missing tool means
+  success. `commit_state: "uncommitted"` means stored durably on disk but not
+  yet in Git history: say so (it is safe and listed in `brain_status`). Any error, `persisted: false` or missing tool means
   nothing was stored.
 - If the connector is unavailable or a call fails, say exactly that. Do not
   reconstruct "what the archive probably says" from memory. Offer to keep the
@@ -36,10 +36,17 @@ generic questions or small talk.
 
 Procedure: `brain_search` (scope `canonical` first for interpretive
 questions) -> open the load-bearing hits with `brain_read` -> answer citing
-refs. Search is lexical keyword matching, not semantic: reformulate with the
-exact terms, names and spellings (Persian and English variants, with and
-without ZWNJ) and retry before saying something is absent. "Not found" means
+refs. Search is lexical keyword matching, not semantic: it does not match
+paraphrase or cross-language meaning. Search iteratively: reformulate with
+the exact terms, names and spellings the records would use, synonyms, the
+Persian and the English wording, and `mode: "exact"` for names and quotes;
+retry several times before saying something is absent. "Not found" means
 "not found by these queries", and you must say which.
+
+Scope `canonical` covers the governed side of the archive, including source
+records and machine-extracted derivatives. Each hit keeps its own tier and
+`authority_level`: a `derivative` (level 5) is a candidate passage, not an
+accepted record.
 
 ## 3. When to capture
 
@@ -108,16 +115,19 @@ When new material may conflict with, correct, or extend an older record:
    overwritten: nothing here edits canonical records.
 
 For a broad question ("everything about X", "does this change anything?")
-use `depth: "deep"`. Follow `next_cursor` until it is null; compare `total`
-with `returned` per section; use `sections` and `expand` to go further into
-a branch. A package you did not page through is a partial view: say so.
+use `depth: "deep"`. Follow `next_cursor` until it is null; compare each
+section's `total` with what you received; use `sections` and `expand` to go
+further into a branch. `truncated: true` (with `truncation_reason`) means an
+internal safety bound cut something: say so. A package you did not page
+through is a partial view: say so.
 
 ## 8. Proposals
 
 `brain_propose` submits a candidate for human adjudication. It needs a
-structured payload and `evidence_refs`: canonical `rec:` refs with a
-verbatim quote of >= 20 characters. Captures can support but never
-substitute for canonical evidence. A rejection lists reasons and stores
+structured payload and `evidence_refs`: at least one `rec:` (or `doc:`) ref
+with a verbatim quote of >= 20 characters copied from `brain_read` output;
+every quote you attach is checked. Captures (`cap:`) can support but never
+substitute for that evidence. A rejection lists reasons and stores
 nothing: repair the evidence, do not paraphrase around it. A stored
 proposal changes nothing in the archive. Never describe it as an update,
 promotion or acceptance.
@@ -125,7 +135,7 @@ promotion or acceptance.
 ## 9. Media and things you cannot inspect
 
 The connector is text-first. If a read shows `media.present` with
-`inspectable: false`, or `pending_needs` in `brain_status` lists
+`inspectable: false`, or `captures_pending` in `brain_status` lists
 `needs_transcription`, `needs_description` or `needs_interpretation`, the
 material exists but you have not seen it. Do not transcribe, describe or
 interpret it, and do not fill gaps plausibly. Say what is missing and that

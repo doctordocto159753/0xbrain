@@ -1,0 +1,6 @@
+# Test/dev only (never installed in the image). One environment for everything:
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r requirements.txt -r requirements-remote.txt \
+#       -r deploy/requirements-image.txt -r requirements-dev.txt
+#   .venv/bin/python -m pytest -q
+pytest>=8,<10
