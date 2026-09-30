@@ -1,0 +1,5 @@
+# Optional: remote MCP transport (Agent A). Not needed for the base kit.
+# Exact pin: the low-level app FAILS OPEN unless a token verifier is passed
+# (see scripts/remote_mcp/server.py); re-run tests/test_mcp_remote.py on any bump.
+mcp==2.2.0
+PyYAML>=6.0,<7
