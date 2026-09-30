@@ -1,167 +1,310 @@
-# Agent 0 reuse audit: 0xBrain source acquisition blocker
+# Agent 0 — Reuse Audit, Feature Preservation Matrix & Contract Freeze
 
-**Status:** Blocked before source archaeology; this document is not an accepted
-contract freeze and must not be used to start Agents A–G.
+Status: **accepted with revisions** (K3, K5, K9 revised per owner decision). Supersedes the earlier "blocked" report.
+Evidence labels: **[V]** verified by running/reading code in this session,
+**[I]** inference, **[U]** unverified (delegated to a named agent).
 
 ## 1. Verdict
 
-The repository being changed is the local checkout at `/workspace/0xbrain`.
-Its intended GitHub repository is `doctordocto159753/0xbrain`; the earlier
-report incorrectly treated `mozareeduge/living-wiki-kit` as the destination
-repository rather than an external implementation base to inspect and reuse.
+1. Living Wiki is a strong base. Governance, validators, capture core, proposal
+   audit, exports and skills are real, deterministic and model-free by default.
+   Baseline is green [V].
+2. **Model removal is mostly already done.** No default path needs a local
+   model [V]. The only default-path model touchpoint is `qmd embed` in
+   `scripts/refresh-search.ps1` (a Windows helper), which is replaced by
+   configuration, not code.
+3. The real work is narrower than the brief assumes:
+   - **Remote transport + auth** (the server is stdio, protocol `2024-11-05`, no auth).
+   - **A tightened remote tool surface**: `wiki_propose` accepts free text,
+     while the proposal schema and `evidence_audit.py` require structured
+     evidence; `wiki_mark_capture_reviewed` lets the model record a *human*
+     review with a caller-supplied `actor`.
+   - **Capture states** `needs_transcription / needs_description /
+     needs_interpretation` do not exist; Claude-produced text has no
+     provenance label.
+   - **Linux/VPS packaging** (everything operational is `.ps1`).
+   - **Test debt**: the capture core and MCP server have no tests in the repo.
+4. Three brief assumptions are false at this commit (Section 3, "Corrections").
+5. No rewrite is approved. Every "replace" below is empty.
 
-The required reuse audit still cannot be completed from this checkout. It
-contains only `.gitkeep`, the local initialization commit, and this blocker
-report. Neither the actual `doctordocto159753/0xbrain` contents nor the external
-`living-wiki-kit` source are available locally. Outbound GitHub access is denied
-by the execution environment with HTTP 403 responses.
+## 2. Sources inspected
 
-It would be unsafe to turn the feature summary supplied in the task into an
-"exact" preservation matrix. The task explicitly says that summary is not a
-substitute for source inspection. No architecture decision, replacement,
-external dependency adoption, shared contract, ownership assignment, or agent
-branch is therefore approved by this report.
+| Role | Repo | Commit |
+|---|---|---|
+| Target (0xBrain) | `doctordocto159753/0xbrain` | `d29bfd0` (was empty: `.gitkeep` + blocker note) |
+| Reuse base | `mozareeduge/living-wiki-kit` `main` | **`02399e7`** (114 files, ~630 KB) |
 
-## 2. Source commit inspected
+The base was merged into the 0xBrain branch with `--allow-unrelated-histories`
+(remote `living-wiki`), so upstream history stays inspectable and future
+upstream fixes can be merged. The accepted baseline SHA is the commit that
+adds this file (recorded in the PR description).
 
-No source commit from `doctordocto159753/0xbrain` or `living-wiki-kit` was
-available to inspect.
+## 3. Baseline status [V]
 
-The only available commit is `185b4a8` (`Initialize repository`). It contains
-only `.gitkeep` and has not been verified as a commit from the target GitHub
-repository.
+| Check | Result |
+|---|---|
+| `python scripts/validate_repo.py --full` | PASS (warnings: openspec/handoff files lack frontmatter) |
+| `python scripts/validate_content_release.py` | PASS |
+| `python scripts/check_against_baseline.py` (pre-commit/CI gate) | OK |
+| `python tests/test_validator_mutations.py` | 102/102 |
+| `pytest tests` (context compiler, evidence audit, reconcile runner) | 24 passed |
+| `instantiate.py --prefix zb` on a scratch copy, then validate | PASS |
+| MCP stdio smoke: initialize, capture_text, propose, exact | works; capture record validates |
+| `qmd` 2.8.3 (npm, MIT): `qmd search` and `qmd query "lex: …" --no-rerank --json` | works, ~0.2 s, **no model downloaded** (cache holds only the SQLite index), stdout is clean JSON, warnings on stderr |
+| `to_md.py` on a .docx (deps: pymupdf, python-docx, python-pptx, openpyxl, bs4, lxml) | works, no network |
 
-Acquisition of the actual target was attempted with:
+Corrections to the brief:
 
-```sh
-git remote set-url upstream https://github.com/doctordocto159753/0xbrain.git
-git fetch upstream --tags
-```
-
-The fetch failed with `CONNECT tunnel failed, response 403`. Earlier attempts
-to fetch the external Living Wiki repository and its GitHub archives failed for
-the same environmental reason.
-
-## 3. Baseline validator/test status
-
-No baseline validators or tests exist in this checkout, so none could be run.
-This is an acquisition failure, not a passing baseline.
+- **C1. No semantic benchmark fixtures ship.** `semantic-benchmark-v1.1.0.json` and
+  `qmd-collections-v1.1.0.json` are referenced by scripts but absent
+  (`00-system/configuration/` holds only `content-release.json`;
+  `validate_content_release.py:221` looks for a differently named
+  `semantic-benchmark.json`). "Fixtures as evaluation assets" does not hold; Agent C
+  must author the lexical evaluation set. The upstream handoff records
+  lexical-only recall of 3/30 on the *instance* corpus, so lexical quality on
+  natural-language questions is a known weakness, mitigated by Claude
+  reformulating queries.
+- **C2. Numbered layers mostly do not exist in the kit.** Only `00-system/`,
+  `07-genesis/`, `_captures/`, `_proposals/` are present. `01-inbox/captures/`
+  appears on the first capture; `02-sources`…`06-relations`, `_originals/` are
+  created by use. Validators tolerate absence. "Preserve the layout" means
+  preserving these names and the validator's expectations, not scaffolding empty dirs.
+- **C3. Capture core and MCP server have no tests in the repo.** `.gitignore`
+  excludes `scripts/capture/tests/` and `fixtures/`. `wiki_capture.py` (797
+  lines) and `wiki_mcp_server.py` (582 lines) are effectively untested here.
+  "Reusable until tests prove otherwise" is therefore unproven; characterization
+  tests come first.
 
 ## 4. Feature-preservation matrix
 
-The exact required schema is frozen below, but every row remains unclassified
-until the implementation base is available. Claims in the prompt are recorded
-only as an inspection queue, never as verified facts.
+Model required: N = no, O = optional path only. Decision key: P preserve as-is,
+W wrap, C configure, X extend (additive), D defer.
 
-| Capability | Existing implementation/files | Existing tests | Current dependency | Model required? | Decision | Reason | Owning agent |
+| Capability | Existing files | Existing tests | Dependency | Model | Decision | Reason | Owner |
 |---|---|---|---|---|---|---|---|
-| Repository/instance layout and instantiation | UNVERIFIED: inspect numbered layers, special directories, `scripts/instantiate.py` | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Governance, authority, record grammar, and handoffs | UNVERIFIED: inspect `SYSTEM_DESIGN.md`, `00-system/**`, templates/registers | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Repository and content-release validation | UNVERIFIED: inspect validator scripts, fixtures, hooks, and CI | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Governed multimodal capture and recovery | UNVERIFIED: inspect `scripts/capture/**` and tests | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| MCP read/search/proposal/capture tools | UNVERIFIED: inspect `scripts/wiki_mcp_server.py` and tests | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Exact search | UNVERIFIED: inspect `wiki_exact` implementation and tests | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| QMD lexical/BM25 search | UNVERIFIED: inspect QMD scripts/configuration and benchmark assets | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Semantic/hybrid search | UNVERIFIED: inspect QMD modes and benchmark fixtures | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| File-to-Markdown conversion | UNVERIFIED: inspect converters, provenance output, dependencies, fixtures | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Proposal queue and canonical promotion | UNVERIFIED: inspect proposal scripts/schema/validators/tests | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Reconciliation context assembly | UNVERIFIED: inspect skills, scripts, records, and tests | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Interchange and public export | UNVERIFIED: inspect export scripts, schemas, and tests | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Claude skills and repository workflows | UNVERIFIED: inspect `.claude/skills/**`, `CLAUDE.md`, and workflow guides | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Backup/restore and platform helpers | UNVERIFIED: discover helper scripts and documentation | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
-| Remote MCP transport/authentication | UNVERIFIED: first establish current protocol and seams | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent; spike cannot be scoped safely | Unassigned |
-| Personal-VPS deployment | UNVERIFIED: discover current packaging and deployment assets | UNVERIFIED | UNVERIFIED | UNVERIFIED | **Unclassified** | Source absent | Unassigned |
+| Instantiation / prefix rewrite | `scripts/instantiate.py`, `INSTANTIATE.md` | mutation suite (partial) | PyYAML | N | P + X | Refuses to reseed populated corpus. Rewrites `mozare`→`wiki` in docs; 0xBrain needs a fixed prefix chosen once at install. Installer calls it; do not fork it | G |
+| Record grammar, schemas, templates, vocab | `00-system/schemas/*`, `templates/*`, `policies/CONTROLLED_VOCABULARY.md` | via validators | – | N | P | Frozen | E |
+| Authority hierarchy, handoffs, genesis | `SYSTEM_DESIGN.md`, `07-genesis/`, `_captures/HANDOFF*`, `wiki-handoff` | via validators | – | N | P | Frozen | E |
+| Repo validation | `validate_repo.py` (910 l) | 102 mutation tests | PyYAML | N | P | Green | E |
+| Content-release gate | `validate_content_release.py`, `content-release.json` | in mutation suite | – | N | P | Baseline errors file carries mozare-instance entries (`known-baseline-errors.txt`); reset to empty for 0xBrain | E |
+| Pre-commit / CI gate | `.githooks/*`, `check_against_baseline.py`, `validate.yml` | in mutation suite | `python` on PATH | N | C | Hook calls `python`; Debian VPS usually has only `python3`. Configure, don't rewrite | E |
+| Capture core (text, media, dedupe, state machine, orphan recovery, atomic write) | `scripts/capture/wiki_capture.py` | **none in repo** | stdlib | N | P + X | Add states/labels only additively; write tests first | D |
+| STT contract | `stt_contract.py` | none | faster-whisper (lazy) | O | C | Auto path gated by absent `stt-benchmark-pass.json`; manual adapter default. Add a `claude` adapter label that stores text as candidate | D |
+| OCR contract | `ocr_contract.py` | none | rapidocr (lazy) | O | C | Optional, not in requirements; keep, off by default | D |
+| Telegram/Hermes hook | `telegram_capture_hook.py` | none | – | N | D | Not part of the Claude-remote path | – |
+| MCP tool logic | `wiki_mcp_server.py` (12 tools) | **none** | stdlib, `qmd` | N | W | `DISPATCH` functions take a dict and return a JSON string: wrap unchanged. Transport code (`handle`, `main`) is what gets replaced by the SDK | A |
+| Exact search | `tool_wiki_exact` | none | – | N | P | Linear grep over five zones; fine at personal scale. Note: case-sensitive, first-hit-per-file | C |
+| QMD lexical search | `_qmd_query_lexical`, `tool_wiki_search`, `context_pack.default_search` | `test_context_compiler` (fake search) | `qmd` (Node ≥22) | N | C | Verified model-free. Requires collection `wiki` to exist, but the collections config is absent (C1) | C |
+| QMD semantic/hybrid | `SEARCH_GUIDE.md` §4, `refresh-search.ps1` (`qmd embed`), `run-semantic-benchmark.py` | none | qmd models | Y | D | Off by default, documented as optional | C |
+| Proposal queue | `tool_wiki_propose`, `_proposals/proposals.jsonl`, `proposal_schema.json` | – | – | N | W + X | Server accepts 3 of 8 schema kinds with free-text body only; new wrapper must take structured fields | A/E |
+| Evidence audit | `evidence_audit.py` | `test_evidence_audit` (≈24 total pytest) | – | N | P | Reuse as submit-time validator (import its checks) | E |
+| Reconciliation core | `reconcile_runner.py`, `wiki-reconcile` skill | `test_reconcile_runner` | – | N | P | This is corpus-audit planning (batches, exact-once), *not* semantic reconciliation; the package builder is new | B/E |
+| Context packer / graph index | `context_pack.py`, `build_graph_index.py` | `test_context_compiler` | sqlite3 | N | W | Basis for the reconciliation package (seed record → graph neighborhood, reason-tagged; its 16k/30 defaults are not contract, see K5) | B |
+| File-to-md | `scripts/file-to-md/to_md.py` | none | pymupdf, docx, pptx, openpyxl, bs4 | N | P | Header records method, bytes, date; **no source SHA-256**. MarkItDown comparison deferred (Section 6) | F |
+| Interchange export | `export_interchange.py` | – | – | N | P | PROV-O, SKOS, TEI, RO-Crate check. Namespace `living-wiki-kit.local` to be revisited | F |
+| Public export valve | `export_public.py` | – | – | N | P | Gated on `visibility: public` | F |
+| Holdings / census / retier / drift | `report_holdings.py`, `retier_holdings.py`, `schema_drift_fixer.py`, `check_research_spans.py` | mutation suite | – | N | P | Ops tools | E |
+| Faithfulness benchmark | `run_faithfulness_benchmark.py` | – | `openai` → OpenRouter | **Y (remote LLM)** | D | Developer eval only; keep out of the deploy image; fixture missing (C1) | – |
+| Claude skills & guides | `.claude/skills/wiki-*` (8), `CLAUDE.md`, `AGENTS.md`, `GPT_WORKFLOW.md` | – | – | N | X | Source for standing instructions; skills assume a filesystem-attached Claude Code, not remote MCP | B |
+| Backup / setup / search helpers | `create-backup.ps1`, `setup-after-clone.ps1`, `verify-install.ps1`, `search-wiki.ps1`, `configure-search.ps1`, `refresh-search.ps1` | – | PowerShell | see below | P + X | Keep; add Linux `.sh` equivalents. `refresh-search.ps1` runs `qmd embed`: Linux variant must run `qmd update` only | G |
+| Remote transport/auth | none | – | – | N | **New** | Real gap | A |
+| Docker/Caddy/deploy/docs | none | – | – | N | **New** | Real gap | G |
 
-## 5. Model-removal matrix
+## 5. Model-removal matrix [V unless marked]
 
-No inference path can be classified without tracing code, configuration,
-dependency manifests, and tests.
+| Inference | Where | Default today | Disposition |
+|---|---|---|---|
+| Local embeddings | `qmd embed` (`refresh-search.ps1`), `qmd vsearch`, bare `qmd query` (SEARCH_GUIDE) | `embed` runs in the Windows refresh helper | **Remove from default**; Linux refresh = `qmd update`; document semantic as optional |
+| Reranking | `--no-rerank` in `_qmd_query_lexical` and `context_pack` | already off | Keep flag; assert it in a test |
+| Query expansion | bare `qmd query` (minutes, model-backed); typed `lex:` avoids it | MCP path already typed | Keep typed `lex:`; forbid bare `qmd query` in server code |
+| STT | `FasterWhisperAdapter`, lazy import | disabled until benchmark file exists; `manual` default | **Delegate to Claude** (Claude reads audio only if it can access it; otherwise state `needs_transcription`) + manual fallback |
+| OCR | `RapidOCAdapter`, lazy import | not installed | **Delegate to Claude** for literal extraction when the image is viewable; else `needs_transcription`; keep RapidOCR optional |
+| Vision / description | none: manual-only by design | n/a | **Delegate to Claude**; `needs_description` |
+| Interpretation | none | n/a | Claude; `needs_interpretation` |
+| Remote LLM | `run_faithfulness_benchmark.py` (OpenRouter) | dev only | Defer; exclude from image |
+| Conversion | `to_md.py` | no model | Nothing to remove |
 
-| Inference category | Implementation/dependency | Default behavior | Required disposition | Verified decision |
-|---|---|---|---|---|
-| Local embeddings | UNVERIFIED | UNVERIFIED | Assess `remove from default` versus `keep optional` | Unclassified |
-| Local reranking | UNVERIFIED | UNVERIFIED | Assess `remove from default` versus `keep optional` | Unclassified |
-| Local query expansion | UNVERIFIED | UNVERIFIED | Assess `remove from default` versus `keep optional` | Unclassified |
-| Local OCR | UNVERIFIED | UNVERIFIED | Assess `delegate to Claude` and `manual fallback` | Unclassified |
-| Local STT | UNVERIFIED | UNVERIFIED | Assess `delegate to Claude` and `manual fallback` | Unclassified |
-| Local vision | UNVERIFIED | UNVERIFIED | Assess `delegate to Claude` and `manual fallback` | Unclassified |
-| Other local inference | UNVERIFIED | UNVERIFIED | Discover through source/dependency search | Unclassified |
+Capture states today: `received, processing, transcribed, described,
+needs-review, processing-failed, reviewed, parked, promoted`, with separate
+`transcription_state: not-requested|pending|complete|needs-review|failed`.
+The three `needs_*` states are **additive and not yet defined**; see contract K4.
 
 ## 6. External reuse recommendations
 
-No candidate is adopted or rejected here because compatibility must be checked
-against the missing implementation. Once source access is restored, the spike
-order requested by the architecture brief should be evaluated: Supergateway,
-official MCP Python SDK v2, then FastMCP with Pocket ID where an IdP is actually
-needed. MarkItDown must be compared with the existing converter rather than
-adopted pre-emptively. Current versions, licenses, maintenance status, protocol
-compatibility, runtime cost, and backup/upgrade implications must be recorded
-from primary sources at spike time.
+Versions from registry lookups this session [V]: `mcp` 2.2.0, `fastmcp` 4.0.10,
+`markitdown` 0.1.8, `supergateway` 4.0.0, `@tobilu/qmd` 2.8.3 (MIT). Pocket ID
+release/license lookup returned nothing through the proxy [U]. Maintenance and
+license checks for the rest are **not yet done** [U]; Agent A must record them.
+
+- **Agent A spike order** (adopt exactly one framework):
+  1. Official `mcp` SDK v2 wrapping `DISPATCH`, with its auth primitives.
+  2. FastMCP if the SDK's auth leaves substantial OAuth/DCR glue.
+  3. Supergateway only as a *timeboxed* 1-hour baseline: it fixes transport
+     but, **[I]** not Claude's OAuth requirement, and Caddy cannot supply OAuth
+     discovery/DCR by itself. Adopt only if paired auth stays simple.
+  Pocket ID only if the chosen path needs an external IdP. Acceptance is a
+  real connection from official Claude, not a local client test; if that
+  cannot be tested from a sandbox, say so and hand the user a verified checklist.
+- **MarkItDown**: **Defer/keep `to_md.py`.** It works, has no models or network,
+  is 240 lines; its docstring claims pdf/epub (pymupdf), docx, pptx, xlsx, html. MarkItDown's possible benefit is format breadth [U].
+  Comparison is Agent F's optional task, with a fixed corpus and provenance
+  checklist. The kit's gap is **source SHA-256 in the header**, which is fixable in
+  ~5 lines regardless of converter.
+- **QMD**: keep, lexical only.
+- **Caddy**: adopt at deploy time.
+- Rejected by default: mcp-auth-proxy (Redis), full QMD semantic stack,
+  replacing Living Wiki with another KB.
 
 ## 7. Frozen shared contracts
 
-No contracts are frozen. In particular, the folder/record grammar, reusable MCP
-function signatures, remote aliases, auth boundary, search result contract,
-capture state contract, reconciliation package, and deployment configuration
-names all require inspection of the implementation base first.
+**K1 Layout/grammar.** Section 4 of the brief plus the shipped schemas are
+frozen. Changes need an entry in `07-genesis/`.
 
-The invariants in the architecture brief remain requirements, but are not a
-substitute for recording their current implementation and test coverage.
+**K2 Stable low-level units** (import, do not rewrite): `wiki_capture.{capture_text,
+capture_media, read_capture, list_captures, set_state, record_transcript,
+record_description, validate_record, recover_orphans}`,
+`evidence_audit` validators, `tool_wiki_read/exact/search` bodies,
+`context_pack`, `build_graph_index`, `to_md.py`, both exporters.
 
-## 8. File ownership map
+**K3 Remote tool surface** (thin wrappers, names frozen):
 
-No file ownership is assigned. Assigning paths before the files are present
-would create precisely the overlap and architecture drift that Agent 0 is meant
-to prevent.
+| Tool | Maps to | Contract |
+|---|---|---|
+| `brain_search(query, scope, n, mode="lexical"\|"exact")` | `tool_wiki_search`, `tool_wiki_exact`, `wiki_search_captures` | `scope` is **required-explicit**: `canonical \| captures \| all`. `canonical` = the five canonical zones only. `captures` = noncanonical intake only. `all` returns two separately labelled result groups, never one merged ranking. Every result carries `authority_note` and its zone/tier |
+| `brain_read(ref)` | `tool_wiki_read`, `read_capture` | **Only `ref`.** No filesystem `path` is accepted publicly. `ref` is an opaque identifier (record id, capture id, or a `ref` returned by search/reconcile) that the server resolves to a file internally; the path resolution and existing `_safe_resolve` checks stay server-side. Read-only |
+| `brain_capture(text, language_hint)` | `capture_text` | **Text-first.** Always creates `received`, channel fixed `mcp`. Remote media ingestion (`capture_media`, `wiki_get_media`) is **not** part of the frozen remote contract until proven with real Claude; the multimodal capture core (CLI, Telegram hook, `capture_media`, recovery, state machine) is preserved unchanged |
+| `brain_reconcile_context(seed_id, mode, ...)` | `context_pack` + package (K5) | Read-only; modes `focused \| deep` |
+| `brain_propose(kind, fields...)` | proposal queue | Structured per `proposal_schema.json`; **validated at submit** by `evidence_audit` logic; reject with reasons instead of queueing junk |
+| `brain_status()` | new, trivial | counts, validator status, search index freshness, pending `needs_*` captures, uncommitted noncanonical writes |
 
-## 9. Parallel branch plan
+**Not exposed remotely:** `wiki_mark_capture_reviewed` (a human decision with
+an unauthenticated `actor` string). Review and promotion stay CLI/human. Also
+not exposed: any write to canonical zones.
 
-The intended names are reserved but must not yet be created:
+**K4 Capture states.** Additive only. Interpretation gaps are recorded in
+`transcription_state` / a new list field, not by renaming existing states;
+`schema_version` stays `1.0.0` unless a breaking change is unavoidable (readers
+reject unknown versions). Claude-produced transcript/description is stored in
+the existing separate sections with a method label `claude` and
+`transcription_reviewed: false`. Literal and interpretive fields remain separate.
 
-```text
-agent/a-mcp-auth
-agent/b-claude-surface
-agent/c-search
-agent/d-capture
-agent/e-governance
-agent/f-io
-agent/g-deploy
+**K5 Reconciliation package** (JSON, read-only, no verdicts): `seed`,
+`canonical_records[]`, `claims[]`, `relations[]`, `source_records[]`,
+`captures[]`, `superseded[]`, `open_proposals[]`, `unresolved[]`, `chronology[]`
+(genesis/handoff refs). Every item has `id`, `ref`, `authority_level`, `reason`
+(as `context_pack` already emits).
+
+There is **no frozen token or record budget.** The former 16 000-token /
+30-record defaults of `context_pack.py` are implementation defaults of the old
+CLI, not product contract. Quality and semantic completeness outrank token
+economy for now.
+
+- `focused`: seed plus its direct (1-hop) neighborhood, all section types,
+  plus lexical hits for an optional query. Intended to fit one response.
+- `deep`: multi-hop expansion (`hops` parameter), lexical expansion, full
+  superseded/older-formulation and chronology sections. Supports **pagination
+  and expansion**: response carries `cursor`/`next_cursor`, per-section
+  `total` vs `returned`, and accepts `sections=[...]` and `expand=[ref...]`
+  to pull more of a specific branch.
+- **Internal safety bounds are allowed** (hard ceilings on records, bytes,
+  hops, runtime; configurable, not part of the contract) but must never
+  truncate silently: any cut is reported as `truncated: true` with the
+  section, the reason, and the `next_cursor` to continue. A bound must not
+  be the reason a semantically relevant record is absent without notice.
+- Ordering is deterministic (authority level, then graph distance, then id)
+  so pagination is stable.
+
+**K6 Auth boundary.** Single owner. Unauthenticated requests get nothing,
+including `brain_status`. Secrets only via `.env` (git-ignored); never in the repo.
+
+**K7 Search.** Lexical BM25 (`qmd search` / typed `lex:`) + exact. Scores are
+navigation. `qmd embed`, `vsearch`, bare `query` never run by default.
+
+**K8 Deployment names** (proposed): env `BRAIN_DOMAIN`, `BRAIN_DATA_DIR`
+(repo checkout), `BRAIN_PREFIX`, `BRAIN_OWNER_EMAIL`, `BRAIN_AUTH_*`
+(defined by Agent A); compose services `caddy`, `brain`, optional `auth`.
+Container needs Python 3.12 + Node ≥22 (qmd).
+
+**K9 Git history (single-owner mode).** Supersedes the earlier snapshot-branch proposal.
+
+- Remote MCP writes **only noncanonical zones**: `01-inbox/captures/` and
+  `_proposals/`. It has no canonical write, review, accept or promote
+  capability (`wiki_mark_capture_reviewed` stays unexposed).
+- After the write and its validation (`wiki_capture.validate_record`, proposal
+  schema/evidence check), the operation **may commit directly to `main`**,
+  under a Git/file lock, staging only the paths that operation wrote
+  (`git commit -- <paths>`) and passing through the existing hook gate.
+- Preservation beats commit success: if validation-gated commit fails or the
+  lock times out, the capture stays on disk, `brain_status` reports it as
+  uncommitted, and nothing is lost or retried destructively. Failed
+  validation of a proposal rejects it before it is written.
+- **Canonical promotion** is only by explicit human CLI/review: full
+  validation (`validate_repo.py --full`, `validate_content_release.py`,
+  baseline gate), then a **separate commit on `main`**.
+- Branches/PRs are reserved for bulk migration, large reconciliation and
+  high-risk or major changes (optional or required per change), never for
+  routine capture/propose operations.
+- Multi-owner or public deployment would reopen this decision.
+
+## 8. File ownership
+
+| Agent | Owns | Must not touch |
+|---|---|---|
+| A mcp-auth | new `brain_server/` (or `scripts/brain_mcp/`), auth config, protocol tests | existing `scripts/wiki_mcp_server.py` bodies (import only; edits go through D/C/E owners) |
+| B claude-surface | new `docs/claude/`: standing instructions, connector guide, tool-usage prompts; adapt skill text | code |
+| C search | `scripts/configure-search.sh`, `refresh-search.sh`, search eval set, QMD config JSON, `SEARCH_GUIDE.md` | MCP transport |
+| D capture | `scripts/capture/**`, new `tests/test_capture_*.py` | validators |
+| E governance | `scripts/validate_*.py`, `evidence_audit.py`, `.githooks`, `.github`, `known-baseline-errors.txt`, `proposal_schema.json`, `tests/test_validator_mutations.py` | capture |
+| F io | `scripts/file-to-md/**`, `export_*.py`, conversion tests | – |
+| G deploy | `Dockerfile`, `compose.yaml`, `Caddyfile`, `install.sh`, `scripts/*.sh`, `docs/deploy/**`, `instantiate` wrapper | app code |
+
+Shared hotspots: `requirements.txt` (E owns, others request lines), `SYSTEM_DESIGN.md`
+/ `CLAUDE.md` / `AGENTS.md` (B proposes, E merges), `instantiate.py` TARGET_GLOBS
+(any new file with `mw-`/`mozare` strings must be added, or it will leak the
+old prefix), the `.gitignore` (D/E).
+
+## 9. Branch plan
+
+Not created yet: creation waits for acceptance. After acceptance, from the
+accepted SHA:
+
+```sh
+for b in a-mcp-auth b-claude-surface c-search d-capture e-governance f-io g-deploy; do
+  git branch agent/$b <accepted-sha>
+done
 ```
 
-All seven must branch from the same future accepted baseline commit, after this
-audit is replaced by a complete, evidence-backed report.
+## 10. Risks
 
-## 10. Risks and merge hotspots
-
-The immediate risk is treating an asserted baseline as inspected source. Other
-risks—MCP module overlap, capture schema changes, search configuration, validator
-coupling, dependency manifests, Compose/Caddy integration, and documentation
-ownership—cannot be bounded until the repository is present.
+1. **Auth is the critical unknown** and cannot be proven without an actual
+   official-Claude connection to a public HTTPS host.
+2. Untested capture/MCP code: D and A must add characterization tests before
+   modifying behavior.
+3. Instantiate leakage: `MOZARE_WORDS` blanket-replaces "mozare" in docs; any
+   new doc or script listing must be reviewed against it.
+4. Lexical recall (3/30 upstream, instance-level) makes Claude-side query
+   reformulation and `brain_search` result guidance important.
+5. The `proposals.jsonl` append has no lock; fine for one owner, revisit if
+   concurrent clients appear.
+6. `known-baseline-errors.txt` contains another instance's tolerated errors and
+   must be emptied for 0xBrain, in the same commit that proves validators pass.
 
 ## 11. Instructions to Agents A–G
 
-**Do not start parallel implementation.** The mandatory matrix has not been
-accepted because it could not be produced from source. After source restoration,
-Agent 0 must inspect the required files, discover additional relevant files, run
-the complete baseline test suite, replace every `UNVERIFIED` cell, freeze the
-contracts and ownership map, and identify the accepted baseline commit. Only
-then should all agent branches be created from that exact commit.
-
-## Unblocking procedure
-
-Provide the target `doctordocto159753/0xbrain` repository contents in this
-workspace (including Git history), or permit outbound access to GitHub. The
-Living Wiki repository must then be made available as a separate reuse source.
-Use distinct remotes so their roles cannot be confused:
-
-```sh
-git remote add origin https://github.com/doctordocto159753/0xbrain.git
-git remote add living-wiki https://github.com/mozareeduge/living-wiki-kit.git
-git fetch --all --tags
-```
-
-If source is supplied by an archive instead, its exact upstream commit SHA must
-also be supplied or otherwise verifiably recovered. The audit should resume
-from the target repository's actual source commit, record the distinct Living
-Wiki commit inspected, and never replace the target repository with the reuse
-source.
+- **All:** branch from the accepted SHA; run the six baseline commands in
+  Section 3 before and after; write characterization tests before changing
+  behavior; answer the reuse-first questions in your PR; do not edit files you
+  do not own.
+- **A:** timeboxed spike per Section 6; deliverable is a working remote server
+  exposing K3 (text-first capture, `ref`-only read, explicit `scope`) through wrapped `DISPATCH` functions, plus a written comparison
+  and a connection test.
+- **B:** derive standing instructions from `CLAUDE.md` + skills; state
+  what Claude does versus what the server does, and how `needs_*` items are handled.
+- **C:** author lexical eval set and collections config (C1); Linux refresh
+  scripts without `qmd embed`; test that no model file is downloaded.
+- **D:** tests for existing capture core first; then additive K4. Multimodal core stays intact; remote media is out of contract until proven.
+- **E:** empty the baseline file, make hook interpreter-portable, move
+  proposal validation into an importable function for `brain_propose`.
+- **F:** add source SHA-256 to conversion headers; MarkItDown comparison
+  optional and evidence-based.
+- **G:** Docker/Caddy/install/backup/restore/upgrade docs; consume A's auth choice.
