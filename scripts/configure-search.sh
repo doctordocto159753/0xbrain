@@ -28,7 +28,10 @@ PY
 
 existing="$(qmd collection list 2>&1 || true)"
 managed=" wiki "
-while IFS=$'\t' read -r name _; do [ -n "$name" ] && managed="$managed$name "; done <<<"$specs"
+while IFS=$'\t' read -r name _; do
+  [ -n "$name" ] || continue
+  case "$managed" in *" $name "*) ;; *) managed="$managed$name ";; esac   # no duplicates
+done <<<"$specs"
 for name in $managed; do
   if grep -Eq "(^|[[:space:]])${name}([[:space:]]|$)" <<<"$existing"; then
     echo "removing rebuildable collection registration: $name"
