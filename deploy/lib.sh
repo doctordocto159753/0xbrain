@@ -33,6 +33,17 @@ dc() { docker compose --project-directory "$REPO" "$@"; }
 # One-off command in the brain image against the mounted repo (no server, no caddy).
 brain_run() { dc run --rm --no-deps -T brain "$@"; }
 
+# Build the image, or (BRAIN_SKIP_BUILD=1) use one that already exists locally / can be pulled
+# from the registry named by BRAIN_IMAGE. Useful offline or with a prebuilt image.
+build_image() {
+  if [ "${BRAIN_SKIP_BUILD:-0}" = "1" ]; then
+    local img; img="$(env_get BRAIN_IMAGE)"; img="${img:-0xbrain/brain:local}"
+    docker image inspect "$img" >/dev/null 2>&1 || dc pull brain || die "BRAIN_SKIP_BUILD=1 but image $img is neither local nor pullable"
+  else
+    dc build brain
+  fi
+}
+
 wait_brain_healthy() { # wait_brain_healthy [seconds]
   local t="${1:-180}" i=0 cid st
   while [ "$i" -lt "$t" ]; do
@@ -52,7 +63,7 @@ public_health() { # public_health -> 0 if https://$BRAIN_DOMAIN/healthz answers 
   dom=$(env_get BRAIN_DOMAIN); port=$(env_get BRAIN_HTTPS_PORT); port="${port:-443}"
   [ -n "$(env_get BRAIN_TLS_DIRECTIVE)" ] && k="-k"
   # --resolve pins to localhost so the check works before DNS is verified, while still validating the cert name.
-  curl -fsS $k --max-time 8 --resolve "$dom:$port:127.0.0.1" "https://$dom:$port/healthz" >/dev/null 2>&1
+  curl --noproxy "*" -fsS $k --max-time 8 --resolve "$dom:$port:127.0.0.1" "https://$dom:$port/healthz" >/dev/null 2>&1
 }
 
 wait_public_health() {

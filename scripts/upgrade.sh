@@ -19,7 +19,7 @@ MARK="$STATE/backups/last-upgrade.txt"
 g() { git -c safe.directory='*' -C "$DATA" "$@"; }
 
 gate() {
-  dc build brain
+  build_image
   dc up -d
   wait_brain_healthy 240 || { dc logs --tail 40 brain >&2; return 5; }
   wait_public_health 180 || return 5

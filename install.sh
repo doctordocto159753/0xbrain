@@ -153,7 +153,7 @@ fi
 # ---- image ------------------------------------------------------------------
 log "building the brain image (Python, Git, Node+QMD, conversion libs; no models)"
 [ -z "$BUILD_CA" ] || { [ -f "$BUILD_CA" ] || die "--build-ca file not found"; export BRAIN_BUILD_CA="$BUILD_CA"; }
-dc build brain
+build_image
 
 # ---- 3. instantiate if fresh ------------------------------------------------
 log "3/10 instantiate (fresh wiki only)"

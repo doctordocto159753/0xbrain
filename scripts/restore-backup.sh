@@ -53,7 +53,7 @@ chown -R "$uid:$gid" "$REPO_DIR" "$STATE_DIR"/{qmd,home,backups,auth,auth-idp} 2
 chmod 600 "$REPO_DIR/.env"; chmod 700 "$STATE_DIR/auth"
 
 log "restored $(info git_head) (uncommitted paths at backup time: $(info uncommitted_paths)); rebuilding image"
-dc build brain
+build_image
 log "git integrity"
 brain_run git fsck --no-dangling
 log "reindex (lexical, model-free)"
