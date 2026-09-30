@@ -1,0 +1,80 @@
+{
+ "id": "06-evidence-backed-proposal",
+ "title": "Evidence-backed proposal and rejection of paraphrase",
+ "standing_rule": "8 Proposals",
+ "user_prompt": "Propose an amendment to the Nil claim: permission should be may-note, not may-describe.",
+ "setup": {
+  "records": [
+   {
+    "id": "obj-nil",
+    "title": "Project Nil",
+    "zone": "03-objects",
+    "level": 4,
+    "text": "Project Nil is the working title of the second novel. Decision of 2026-03: the title stays 'Nil' until the manuscript is complete."
+   },
+   {
+    "id": "clm-nil",
+    "title": "Nil title claim",
+    "zone": "05-claims",
+    "level": 4,
+    "text": "Claim: the novel's title is fixed as 'Nil' (permission: may-describe).",
+    "edges": [
+     "obj-nil"
+    ]
+   }
+  ]
+ },
+ "reference_calls": [
+  {
+   "tool": "brain_propose",
+   "args": {
+    "kind": "claim-amendment",
+    "structured_fields": {
+     "claim_id": "clm-nil",
+     "amendment": "lower permission to may-note",
+     "why": "Title decision was described as provisional in the object record."
+    },
+    "evidence_refs": [
+     {
+      "ref": "rec:clm-nil",
+      "quote": "the novel's title is fixed as 'Nil' (permission: may-describe)"
+     }
+    ]
+   },
+   "expect": {
+    "ok": true
+   }
+  },
+  {
+   "tool": "brain_propose",
+   "args": {
+    "kind": "claim-amendment",
+    "structured_fields": {
+     "claim_id": "clm-nil",
+     "amendment": "lower permission to may-note",
+     "why": "paraphrased quote attempt"
+    },
+    "evidence_refs": [
+     {
+      "ref": "rec:clm-nil",
+      "quote": "the novel title is definitely settled as Nil"
+     }
+    ]
+   },
+   "expect": {
+    "ok": false,
+    "error.code": "E_PROPOSAL_REJECTED",
+    "persisted": false
+   }
+  }
+ ],
+ "forbidden_tools": [],
+ "reference_reply": "prop:prop-fake-0001 is queued as a candidate amendment, with a verbatim quote from rec:clm-nil. A second attempt using a paraphrased quote was rejected and stored nothing; I did not retry with the paraphrase.",
+ "reply_must_match": [
+  "prop:prop-fake-0001",
+  "(?i)rejected"
+ ],
+ "reply_must_not_match": [
+  "(?i)amended the claim"
+ ]
+}

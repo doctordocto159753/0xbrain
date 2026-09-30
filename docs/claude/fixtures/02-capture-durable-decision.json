@@ -1,0 +1,32 @@
+{
+ "id": "02-capture-durable-decision",
+ "title": "Durable decision capture",
+ "standing_rule": "3 When to capture",
+ "user_prompt": "Decision: the appendix moves to the end of part two, because the argument depends on the reader having seen chapter 6 first. Keep that.",
+ "setup": {},
+ "reference_calls": [
+  {
+   "tool": "brain_capture",
+   "args": {
+    "text": "Decision: the appendix moves to the end of part two, because the argument depends on the reader having seen chapter 6 first.",
+    "language_hint": "en"
+   },
+   "expect": {
+    "ok": true,
+    "persisted": true,
+    "status": "received"
+   }
+  }
+ ],
+ "forbidden_tools": [
+  "brain_propose"
+ ],
+ "reference_reply": "Captured verbatim as cap:cap-fake-0001 (unreviewed, level 7; stored and committed).",
+ "reply_must_match": [
+  "cap:cap-fake-0001"
+ ],
+ "reply_must_not_match": [
+  "(?i)summary",
+  "(?i)canonical record was updated"
+ ]
+}

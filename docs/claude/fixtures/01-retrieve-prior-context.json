@@ -1,0 +1,62 @@
+{
+ "id": "01-retrieve-prior-context",
+ "title": "Retrieval of prior project context",
+ "standing_rule": "2 When to retrieve",
+ "user_prompt": "What did we decide about the title of the second novel?",
+ "setup": {
+  "records": [
+   {
+    "id": "obj-nil",
+    "title": "Project Nil",
+    "zone": "03-objects",
+    "level": 4,
+    "text": "Project Nil is the working title of the second novel. Decision of 2026-03: the title stays 'Nil' until the manuscript is complete."
+   },
+   {
+    "id": "clm-nil",
+    "title": "Nil title claim",
+    "zone": "05-claims",
+    "level": 4,
+    "text": "Claim: the novel's title is fixed as 'Nil' (permission: may-describe).",
+    "edges": [
+     "obj-nil"
+    ]
+   }
+  ]
+ },
+ "reference_calls": [
+  {
+   "tool": "brain_search",
+   "args": {
+    "query": "title Nil",
+    "scope": "canonical"
+   },
+   "expect": {
+    "ok": true,
+    "groups.canonical.count": ">=1"
+   }
+  },
+  {
+   "tool": "brain_read",
+   "args": {
+    "ref": "rec:obj-nil"
+   },
+   "expect": {
+    "ok": true,
+    "authority_level": 4
+   }
+  }
+ ],
+ "forbidden_tools": [
+  "brain_capture",
+  "brain_propose"
+ ],
+ "reference_reply": "According to rec:obj-nil (canonical record), the title stays 'Nil' until the manuscript is complete; decided 2026-03. I searched 'title Nil' and opened that record; I have not checked for later changes beyond what these queries surface.",
+ "reply_must_match": [
+  "rec:obj-nil"
+ ],
+ "reply_must_not_match": [
+  "(?i)i remember",
+  "(?i)as I recall"
+ ]
+}
