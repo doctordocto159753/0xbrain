@@ -25,7 +25,6 @@ pytest.importorskip("mcp")
 pytest.importorskip("uvicorn")
 
 import httpx2  # noqa: E402
-from mcp.server.auth.provider import AccessToken  # noqa: E402
 
 from conftest import commit_all, record  # noqa: E402
 from test_mcp_remote import (REDIRECT, SECRET, MemStorage, Running, run,  # noqa: E402
@@ -208,8 +207,9 @@ def test_token_resource_and_scope_binding_and_revocation():
 
         def plant(resource, scopes):
             tok = secrets.token_urlsafe(32)
-            prov._access[hashlib.sha256(tok.encode()).hexdigest()] = AccessToken(
-                token=tok, client_id="c", scopes=scopes, expires_at=None, resource=resource)
+            prov._access[hashlib.sha256(tok.encode()).hexdigest()] = {
+                "client_id": "c", "scopes": scopes, "expires_at": None, "resource": resource,
+                "subject": None}
             return tok
 
         good = plant(srv.url + "/mcp", ["brain"])

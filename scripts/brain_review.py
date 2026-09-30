@@ -42,6 +42,12 @@ import git_safety as gs  # noqa: E402
 QUEUE_REL = ea.QUEUE_REL
 DECISIONS = {"accept": "accepted", "reject": "rejected", "defer": "deferred"}
 DECIDABLE_FROM = (None, "new", "audited", "deferred")
+# Paths `promote` may pick up implicitly: archive content, registers and entry
+# pages. Anything else that is dirty (code, deploy files, ...) is committed only
+# when the human names it with --paths, so an unrelated edit is never swept in.
+CONTENT_PREFIXES = ("00-system/", "02-sources/", "03-objects/", "04-notes/", "05-claims/",
+                    "06-relations/", "07-genesis/", "08-outputs/", "09-indexes/")
+ENTRY_PAGES = ("HOME.md", "README.md", "SYSTEM_DESIGN.md", "CLAUDE.md")
 FULL_VALIDATION = (
     ["scripts/validate_repo.py", "--full"],
     ["scripts/validate_content_release.py"],
@@ -232,6 +238,13 @@ def promote(root: Path, pid: str, actor: str, paths: list[str] | None = None,
             if unknown:
                 raise ReviewError(f"paths are not dirty canonical changes: {unknown}")
             canon = sorted(wanted)
+        else:
+            other = sorted(p for p in canon if not (p.startswith(CONTENT_PREFIXES)
+                                                    or p in ENTRY_PAGES))
+            if other:
+                raise ReviewError("dirty paths outside the archive content are not promoted "
+                                  f"implicitly: {other}; commit them separately or name the "
+                                  "exact set with --paths")
         if not canon:
             raise ReviewError("no canonical changes in the working tree to promote")
         originals = [p for p in canon if p.startswith("_originals/")]

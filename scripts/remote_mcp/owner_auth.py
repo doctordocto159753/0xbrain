@@ -9,10 +9,13 @@ provider protocol plus the one owner-consent step:
                   code is minted and the browser returns to the client.
 
 Properties: one owner, no accounts, no external IdP, no database. Secrets come
-only from the environment. Access tokens live in memory (1 h). Registered
-clients and refresh tokens (stored as SHA-256 hashes, 30 d, rotated) persist
-in one JSON file under BRAIN_STATE_DIR so a restart does not force a
-reconnect. Tokens are opaque 256-bit random strings.
+only from the environment. Registered clients, access tokens (1 h) and
+refresh tokens (30 d, rotated) persist in one JSON file (0600, directory
+0700) under BRAIN_STATE_DIR, bearer tokens only as SHA-256 hashes, so a
+restart neither forces a reconnect nor exposes a usable token. Tokens are
+opaque 256-bit random strings. (Client secrets issued by DCR are stored as
+issued: the SDK's client authenticator compares them directly; alone they
+grant nothing without a code or refresh token.)
 """
 from __future__ import annotations
 
@@ -101,7 +104,7 @@ class OwnerAuthProvider:
         self._clients: dict[str, OAuthClientInformationFull] = {}
         self._refresh: dict[str, dict] = {}  # sha256(token) -> record
         self._codes: dict[str, AuthorizationCode] = {}  # sha256(code) -> model
-        self._access: dict[str, AccessToken] = {}  # sha256(token) -> model
+        self._access: dict[str, dict] = {}  # sha256(token) -> record (no token text)
         self._access_family: dict[str, str] = {}  # sha256(access) -> refresh hash
         self._pending: dict[str, tuple[OAuthClientInformationFull, AuthorizationParams, float]] = {}
         self._failures: list[float] = []
@@ -114,7 +117,12 @@ class OwnerAuthProvider:
         data = json.loads(self._state_file.read_text(encoding="utf-8"))
         for cid, raw in data.get("clients", {}).items():
             self._clients[cid] = OAuthClientInformationFull.model_validate(raw)
-        self._refresh = dict(data.get("refresh", {}))
+        now = self._now()
+        self._refresh = {h: r for h, r in data.get("refresh", {}).items() if r["expires_at"] >= now}
+        self._access = {h: r for h, r in data.get("access", {}).items()
+                        if r.get("expires_at") is None or r["expires_at"] >= now}
+        self._access_family = {a: f for a, f in data.get("access_family", {}).items()
+                               if a in self._access and f in self._refresh}
 
     def _save_state(self) -> None:
         if not self._state_file:
@@ -127,6 +135,8 @@ class OwnerAuthProvider:
         payload = {
             "clients": {cid: c.model_dump(mode="json") for cid, c in self._clients.items()},
             "refresh": self._refresh,
+            "access": self._access,
+            "access_family": self._access_family,
         }
         fd, tmp = tempfile.mkstemp(dir=str(self._state_file.parent), prefix=".tmp-")
         try:
@@ -262,9 +272,9 @@ class OwnerAuthProvider:
         if old_refresh_hash:
             self._drop_family(old_refresh_hash)
         access, refresh = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        self._access[_h(access)] = AccessToken(
-            token=access, client_id=client_id, scopes=scopes, expires_at=now + ACCESS_TTL,
-            resource=resource, subject=subject)
+        self._access[_h(access)] = {"client_id": client_id, "scopes": scopes,
+                                    "expires_at": now + ACCESS_TTL, "resource": resource,
+                                    "subject": subject}
         self._access_family[_h(access)] = _h(refresh)
         self._refresh[_h(refresh)] = {
             "client_id": client_id, "scopes": scopes, "expires_at": now + REFRESH_TTL,
@@ -306,10 +316,11 @@ class OwnerAuthProvider:
         rec = self._access.get(_h(token))
         if rec is None:
             return None
-        if rec.expires_at is not None and rec.expires_at < self._now():
+        if rec["expires_at"] is not None and rec["expires_at"] < self._now():
             self._access.pop(_h(token), None)
+            self._access_family.pop(_h(token), None)
             return None
-        return rec
+        return AccessToken(token=token, **rec)
 
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
         th = _h(token.token)

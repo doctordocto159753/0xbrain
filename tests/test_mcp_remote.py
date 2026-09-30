@@ -301,6 +301,11 @@ def test_refresh_rotation_revocation_and_restart_persistence(tmp_path):
     state_text = (tmp_path / "oauth_state.json").read_text(encoding="utf-8")
     assert second["refresh_token"] not in state_text and first.refresh_token not in state_text
     with Running(tools=[], state_dir=tmp_path, port=port) as srv2, httpx2.Client() as h:
+        # the access token issued before the restart is still valid (hash persisted):
+        # a connected client keeps working without refresh or re-consent
+        assert h.post(srv2.url + "/mcp", headers={"Authorization": f"Bearer {second['access_token']}"},
+                      json={}).status_code != 401
+        assert second["access_token"] not in state_text
         r = h.post(srv2.url + "/token", data={
             "grant_type": "refresh_token", "refresh_token": second["refresh_token"],
             "client_id": storage.client.client_id, "client_secret": storage.client.client_secret})

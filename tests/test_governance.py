@@ -323,6 +323,21 @@ def test_promote_is_separate_full_validated_canonical_commit(wiki):
     assert rec["adjudication"]["promoted_commit"] == ok["canonical_commit"]
 
 
+def test_promote_never_sweeps_in_non_content_paths(wiki):
+    res = bp.submit_proposal(wiki, "relation-edge", good_fields(), [SRC])
+    pid = res["proposal_id"]
+    br.decide(wiki, pid, "accept", "owner")
+    node(wiki, "03-objects/new.md", "mw-obj-nnnnnn01")
+    (wiki / "scripts").mkdir(exist_ok=True)
+    (wiki / "scripts/stray.py").write_text("print('x')\n")
+    with pytest.raises(br.ReviewError, match="outside the archive content"):
+        br.promote(wiki, pid, "owner", validate=lambda r: [])
+    out = br.promote(wiki, pid, "owner", paths=["03-objects/new.md"], validate=lambda r: [])
+    assert out["promoted"] and out["paths"] == ["03-objects/new.md"]
+    assert (wiki / "scripts/stray.py").exists()
+    assert "scripts/" in git(wiki, "status", "--porcelain")        # still untracked, untouched
+
+
 def test_promote_refuses_originals(wiki):
     pid = bp.submit_proposal(wiki, "relation-edge", good_fields(), [SRC])["proposal_id"]
     br.decide(wiki, pid, "accept", "owner")
