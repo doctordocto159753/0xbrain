@@ -48,8 +48,8 @@ export REPO="$REPO_DIR"
 . "$REPO_DIR/deploy/lib.sh"
 env_set BRAIN_DATA_DIR "$REPO_DIR"; env_set BRAIN_STATE_DIR "$STATE_DIR"
 uid="$(env_get BRAIN_UID)"; gid="$(env_get BRAIN_GID)"
-mkdir -p "$STATE_DIR"/{qmd,home,backups,caddy/data,caddy/config,caddy/conf.d,auth,auth-idp}
-chown -R "$uid:$gid" "$REPO_DIR" "$STATE_DIR"/{qmd,home,backups,auth,auth-idp} 2>/dev/null || true
+mkdir -p "$STATE_DIR"/{qmd,home,backups,caddy/data,caddy/config,auth}
+chown -R "$uid:$gid" "$REPO_DIR" "$STATE_DIR"/{qmd,home,backups,auth} 2>/dev/null || true
 chmod 600 "$REPO_DIR/.env"; chmod 700 "$STATE_DIR/auth"
 
 log "restored $(info git_head) (uncommitted paths at backup time: $(info uncommitted_paths)); rebuilding image"
@@ -58,7 +58,7 @@ log "git integrity"
 brain_run git fsck --no-dangling
 log "reindex (lexical, model-free)"
 brain_run bash scripts/configure-search.sh >/dev/null
-brain_run bash scripts/refresh-search.sh --quiet
+brain_run bash scripts/refresh-search.sh --quiet --no-validate
 if [ "$START" -eq 1 ]; then
   dc up -d
   wait_brain_healthy 240 || { dc logs --tail 40 brain >&2; die "brain not healthy after restore" 5; }

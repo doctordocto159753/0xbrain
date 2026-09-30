@@ -50,7 +50,7 @@ class DeployStatic(unittest.TestCase):
         for svc in ("postgres", "redis", "qdrant", "chroma", "weaviate", "rabbitmq", "ollama"):
             self.assertNotIn(svc, c.lower())
         self.assertEqual(set(re.findall(r"^  (\w+):$", c.split("\nservices:")[1], re.M)),
-                         {"brain", "caddy", "auth"})
+                         {"brain", "caddy"})   # no external IdP: auth is built into brain
 
     def test_no_instance_prefix_leakage(self):
         # instantiate.py rewrites "mozare" and "mw-<kind>-" in the files it globs.
@@ -64,7 +64,35 @@ class DeployStatic(unittest.TestCase):
         self.assertIn(".env", gi.splitlines())
         self.assertIn("!.env.example", gi.splitlines())
         ex = (ROOT / ".env.example").read_text()
-        self.assertNotRegex(ex, r"(?m)^BRAIN_SECRET_KEY=[0-9a-f]{32,}")
+        self.assertNotRegex(ex, r"(?m)^BRAIN_OWNER_SECRET=[0-9a-f]{16,}")
+
+    def test_single_auth_configuration_scheme(self):
+        """Agent A's runtime is the only auth scheme: G's provisional variables
+        and the external-IdP seam are gone from every deploy file."""
+        blob = "".join(f.read_text() for f in DEPLOY_TEXT)
+        for gone in ("BRAIN_SECRET_KEY", "BRAIN_OWNER_SETUP_TOKEN", "BRAIN_AUTH_IMAGE",
+                     "BRAIN_AUTH_DOMAIN", "BRAIN_SERVER_CMD", "auth-idp", "pocket", "supergateway",
+                     "fastmcp"):
+            self.assertNotIn(gone.lower(), blob.lower(), gone)
+        compose = (ROOT / "compose.yaml").read_text()
+        for need in ("BRAIN_STATE_DIR: /state/auth", "BRAIN_REMOTE_SESSION: \"1\"",
+                     "BRAIN_MCP_ADAPTER: semantic", "WIKI_QMD_HOME: /state/qmd"):
+            self.assertIn(need, compose)
+        self.assertIn("BRAIN_OWNER_SECRET", (ROOT / "install.sh").read_text())
+
+    def test_entrypoint_starts_real_server_and_stub_only_on_explicit_opt_in(self):
+        ep = (ROOT / "deploy/entrypoint.sh").read_text()
+        self.assertIn('exec python "$WIKI/scripts/remote_mcp/server.py"', ep)
+        stub_line = next(i for i, l in enumerate(ep.splitlines()) if "stub_server.py" in l)
+        guard = ep.splitlines()[stub_line - 2]
+        self.assertIn('BRAIN_ALLOW_STUB:-0}" = "1"', guard)
+        self.assertEqual(ep.count("stub_server.py"), 1)
+
+    def test_image_installs_remote_runtime(self):
+        df = (ROOT / "Dockerfile").read_text()
+        self.assertIn("requirements-remote.txt", df)
+        self.assertIn("mcp==2.2.0", (ROOT / "requirements-remote.txt").read_text())
+        self.assertIn("!requirements-remote.txt", (ROOT / ".dockerignore").read_text())
 
     @unittest.skipUnless(shutil.which("docker"), "docker CLI not installed")
     def test_compose_interpolates(self):

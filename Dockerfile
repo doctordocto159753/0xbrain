@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1
 # 0xBrain runtime image. Code and data are NOT baked in: the instantiated
-# repository (with .git) is bind-mounted at /wiki. The image carries only
-# runtimes: Python, Git, Node + QMD (lexical search), conversion libraries.
-# No model weights, no STT/OCR/vision models, no embeddings, no remote-LLM SDK.
+# repository (with .git) is bind-mounted at /wiki and the server runs from it
+# (scripts/remote_mcp/server.py). The image carries only runtimes: Python, Git
+# (+LFS hooks), Node + QMD (lexical search), the MCP SDK (remote transport +
+# OAuth) and conversion libraries. No model weights, no STT/OCR/vision models,
+# no embeddings, no remote-LLM SDK.
 
 ARG PYTHON_VERSION=3.12
 ARG NODE_VERSION=22
@@ -31,9 +33,9 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN command -v git >/dev/null 2>&1 || ( apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates \
- && rm -rf /var/lib/apt/lists/* )
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git git-lfs ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 # Node runtime + QMD, copied from the build stage (same Debian release => same glibc).
 COPY --from=qmd /usr/local/bin/node /usr/local/bin/node
@@ -42,11 +44,13 @@ RUN ln -s ../lib/node_modules/@tobilu/qmd/bin/qmd /usr/local/bin/qmd \
  && qmd --version
 
 COPY requirements.txt /tmp/requirements.txt
+COPY requirements-remote.txt /tmp/requirements-remote.txt
 COPY deploy/requirements-image.txt /tmp/requirements-image.txt
 RUN --mount=type=secret,id=extra_ca,required=false \
     if [ -s /run/secrets/extra_ca ]; then export PIP_CERT=/run/secrets/extra_ca; fi; \
-    pip install -r /tmp/requirements.txt \
+    pip install -r /tmp/requirements.txt -r /tmp/requirements-remote.txt \
  && if [ "$WITH_CONVERSION" = "1" ]; then pip install -r /tmp/requirements-image.txt; fi \
+ && python -c "import mcp, uvicorn, yaml" \
  && rm -f /tmp/requirements*.txt
 
 COPY deploy/entrypoint.sh /usr/local/bin/brain-entrypoint
@@ -56,8 +60,10 @@ RUN chmod 0755 /usr/local/bin/brain-entrypoint
 
 # Arbitrary uid is supplied by compose (owner of the repo); nothing writes to $HOME.
 ENV HOME=/state/home \
+    WIKI_QMD_HOME=/state/qmd \
     XDG_CACHE_HOME=/state/qmd/cache \
     XDG_CONFIG_HOME=/state/qmd/config \
+    BRAIN_HOST=0.0.0.0 \
     BRAIN_PORT=8080
 WORKDIR /wiki
 EXPOSE 8080

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # 0xBrain VPS installer. Run from the repository root of a fresh clone:
 #   sudo ./install.sh
-# Asks only for: brain domain, owner email, wiki name, record prefix (and an auth domain if you
-# pass --auth-domain). Everything else is generated. Safe to re-run: existing .env values and
-# an already-instantiated wiki are preserved.
+# Asks only for: brain domain, owner email, wiki name, record prefix. Everything else (including
+# the owner passphrase for the OAuth consent page) is generated. Safe to re-run: existing .env
+# values (identity, secret) and an already-instantiated wiki are preserved.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export REPO
@@ -17,9 +17,6 @@ Usage: ./install.sh [options]
   --email ADDR           owner email (ACME contact + owner identity)
   --name TEXT            wiki name
   --prefix ID            record-ID prefix, 2-8 chars [a-z][a-z0-9]
-  --auth-domain HOST     optional external-IdP domain (needs --auth-image)
-  --auth-image IMAGE     container image for the external IdP
-  --auth-command CMD     optional command override for the IdP container
   --state-dir DIR        state root (default /var/lib/0xbrain)
   --yes                  non-interactive; fail instead of asking
   --skip-dns-check       do not compare DNS with this host's addresses
@@ -27,17 +24,16 @@ Usage: ./install.sh [options]
   --http-port N --https-port N   host ports (default 80/443; non-default only with --tls-internal)
   --python-base IMAGE    base image override (default python:3.12-slim-bookworm)
   --build-ca FILE        extra CA bundle for the image build behind a TLS-inspecting proxy
-  --stub                 allow the health-only deployment STUB when no MCP server is present (tests only)
+  --stub                 run the health-only deployment STUB instead of the server (plumbing tests only)
 USAGE
 }
 
-DOMAIN="" EMAIL="" NAME="" PREFIX="" AUTH_DOMAIN="" AUTH_IMAGE="" AUTH_CMD="" STATE_DIR="" YES=0 SKIP_DNS=0
+DOMAIN="" EMAIL="" NAME="" PREFIX="" STATE_DIR="" YES=0 SKIP_DNS=0
 TLS_INTERNAL=0 HTTP_PORT="" HTTPS_PORT="" PY_BASE="" BUILD_CA="" STUB=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) DOMAIN="$2"; shift 2;; --email) EMAIL="$2"; shift 2;;
     --name) NAME="$2"; shift 2;; --prefix) PREFIX="$2"; shift 2;;
-    --auth-domain) AUTH_DOMAIN="$2"; shift 2;; --auth-image) AUTH_IMAGE="$2"; shift 2;; --auth-command) AUTH_CMD="$2"; shift 2;;
     --state-dir) STATE_DIR="$2"; shift 2;; --yes) YES=1; shift;;
     --skip-dns-check) SKIP_DNS=1; shift;; --tls-internal) TLS_INTERNAL=1; shift;;
     --http-port) HTTP_PORT="$2"; shift 2;; --https-port) HTTPS_PORT="$2"; shift 2;;
@@ -72,8 +68,6 @@ docker info >/dev/null 2>&1 || die "cannot talk to the Docker daemon (run as roo
 [ -n "$EMAIL" ]  || EMAIL="$(env_get BRAIN_OWNER_EMAIL)"
 [ -n "$NAME" ]   || NAME="$(env_get BRAIN_WIKI_NAME)"
 [ -n "$PREFIX" ] || PREFIX="$(env_get BRAIN_PREFIX)"
-[ -n "$AUTH_DOMAIN" ] || AUTH_DOMAIN="$(env_get BRAIN_AUTH_DOMAIN)"
-[ -n "$AUTH_IMAGE" ]  || AUTH_IMAGE="$(env_get BRAIN_AUTH_IMAGE)"
 [ -n "$STATE_DIR" ]   || STATE_DIR="$(env_get BRAIN_STATE_DIR)"
 STATE_DIR="${STATE_DIR:-/var/lib/0xbrain}"
 ask DOMAIN "Brain domain (e.g. brain.example.com)"
@@ -82,9 +76,6 @@ ask NAME   "Wiki name" "My Brain"
 ask PREFIX "Record prefix (2-8 lowercase letters/digits)" "zb"
 [[ "$PREFIX" =~ ^[a-z][a-z0-9]{1,7}$ ]] || die "prefix must be 2-8 chars, lowercase, starting with a letter" 2
 [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || die "invalid domain: $DOMAIN" 2
-if [ -n "$AUTH_DOMAIN" ] && [ -z "$AUTH_IMAGE" ]; then
-  die "--auth-domain needs --auth-image (the external IdP is chosen by the auth decision; see docs/deploy/AUTH_TRANSPORT_SEAM.md)" 2
-fi
 if [ "$TLS_INTERNAL" -eq 0 ] && { [ -n "$HTTP_PORT" ] || [ -n "$HTTPS_PORT" ]; }; then
   die "custom ports cannot obtain public certificates; use standard ports or --tls-internal" 2
 fi
@@ -119,8 +110,8 @@ if [ "$owner_uid" -eq 0 ]; then
   log "repository was root-owned; handing it to system user 'brain' ($owner_uid)"
   chown -R "$owner_uid:$owner_gid" "$REPO"
 fi
-mkdir -p "$STATE_DIR"/{qmd,auth,home,auth-idp,caddy/data,caddy/config,caddy/conf.d,backups}
-chown -R "$owner_uid:$owner_gid" "$STATE_DIR"/{qmd,auth,home,auth-idp,backups}
+mkdir -p "$STATE_DIR"/{qmd,auth,home,caddy/data,caddy/config,backups}
+chown -R "$owner_uid:$owner_gid" "$STATE_DIR"/{qmd,auth,home,backups}
 chmod 700 "$STATE_DIR/auth"
 
 env_set BRAIN_DOMAIN "$DOMAIN"; env_set BRAIN_OWNER_EMAIL "$EMAIL"
@@ -132,25 +123,13 @@ env_set BRAIN_PUBLIC_URL "https://$DOMAIN$([ "$HTTPS_PORT" != 443 ] && echo ":$H
 env_set BRAIN_TLS_DIRECTIVE "$([ "$TLS_INTERNAL" -eq 1 ] && echo 'tls internal' || true)"
 [ -n "$PY_BASE" ] && env_set BRAIN_PYTHON_BASE "$PY_BASE"
 [ "$STUB" -eq 1 ] && env_set BRAIN_ALLOW_STUB 1
-# Secrets: generated once, never rotated by a re-run.
-[ -n "$(env_get BRAIN_SECRET_KEY)" ] && [ "$(env_get BRAIN_SECRET_KEY)" != "generated-by-install.sh" ] || env_set BRAIN_SECRET_KEY "$(openssl rand -hex 32)"
-[ -n "$(env_get BRAIN_OWNER_SETUP_TOKEN)" ] && [ "$(env_get BRAIN_OWNER_SETUP_TOKEN)" != "generated-by-install.sh" ] || env_set BRAIN_OWNER_SETUP_TOKEN "$(openssl rand -hex 24)"
-chown "$owner_uid:$owner_gid" "$ENV_FILE"; chmod 600 "$ENV_FILE"
-
-# ---- 6 (prepared early). HTTPS for the optional auth site ------------------
-rm -f "$STATE_DIR/caddy/conf.d/auth.caddy"
-if [ -n "$AUTH_DOMAIN" ]; then
-  env_set BRAIN_AUTH_DOMAIN "$AUTH_DOMAIN"; env_set BRAIN_AUTH_IMAGE "$AUTH_IMAGE"
-  env_set COMPOSE_PROFILES auth
-  [ -z "$AUTH_CMD" ] || env_set BRAIN_AUTH_COMMAND "$AUTH_CMD"
-  port="$(env_get BRAIN_AUTH_PORT)"; port="${port:-1411}"; env_set BRAIN_AUTH_PORT "$port"
-  cat > "$STATE_DIR/caddy/conf.d/auth.caddy" <<CADDY
-$AUTH_DOMAIN {
-	$([ "$TLS_INTERNAL" -eq 1 ] && echo 'tls internal')
-	reverse_proxy auth:$port
-}
-CADDY
+# Owner passphrase for the OAuth consent page: generated once, never rotated by a re-run.
+cur_secret="$(env_get BRAIN_OWNER_SECRET)"
+if [ -z "$cur_secret" ] || [ "$cur_secret" = "generated-by-install.sh" ] || [ "${#cur_secret}" -lt 16 ]; then
+  env_set BRAIN_OWNER_SECRET "$(openssl rand -hex 24)"
 fi
+unset cur_secret
+chown "$owner_uid:$owner_gid" "$ENV_FILE"; chmod 600 "$ENV_FILE"
 
 # ---- image ------------------------------------------------------------------
 log "building the brain image (Python, Git, Node+QMD, conversion libs; no models)"
@@ -175,8 +154,8 @@ log "4/10 QMD lexical search (no embeddings, no model downloads)"
 brain_run bash scripts/configure-search.sh
 brain_run bash scripts/refresh-search.sh
 
-# ---- 5-8. HTTPS, auth, start, health ---------------------------------------
-log "5-7/10 starting services (caddy HTTPS$([ -n "$AUTH_DOMAIN" ] && echo ', external auth' || echo ''))"
+# ---- 5-8. HTTPS, start, health ---------------------------------------
+log "5-7/10 starting services (caddy HTTPS -> brain remote MCP + owner OAuth)"
 dc up -d
 log "8/10 waiting for health"
 wait_brain_healthy 240 || { dc logs --tail 40 brain >&2; die "brain did not become healthy" 5; }
@@ -193,12 +172,13 @@ cat <<DONE
 0xBrain is running.
   URL:          $(env_get BRAIN_PUBLIC_URL)
   Health:       $(env_get BRAIN_PUBLIC_URL)/healthz
-  Owner setup:  token in $ENV_FILE (BRAIN_OWNER_SETUP_TOKEN) -- provisional until the auth stack is integrated
+  MCP URL:      $(env_get BRAIN_PUBLIC_URL)/mcp
+  Owner secret: sudo grep ^BRAIN_OWNER_SECRET= $ENV_FILE   (typed once on the consent page)
   State:        $STATE_DIR      Repo/data: $REPO
 
-Connect Claude: follow docs/deploy/CLAUDE_CONNECT.md (connector URL, auth, standing
-instruction, first brain_status). Back up with: scripts/create-backup.sh
+Connect Claude: follow docs/CONNECT_CLAUDE.md (custom connector URL above, owner
+consent, standing instructions, first brain_status). Back up with: scripts/create-backup.sh
 DONE
 if [ "$STUB" -eq 1 ] || [ "$(env_get BRAIN_ALLOW_STUB)" = "1" ]; then
-  warn "running the deployment STUB: no MCP endpoint exists yet; Claude cannot connect."
+  warn "running the deployment STUB (BRAIN_ALLOW_STUB=1): no MCP endpoint; Claude cannot connect."
 fi

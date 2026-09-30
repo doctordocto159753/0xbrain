@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Linux equivalent of create-backup.ps1, and a real one: the whole instantiated repo
 # INCLUDING .git, _originals, captures/proposals (committed or not), .env, plus
-# self-hosted auth and Caddy state. The search index is rebuildable and excluded.
+# the OAuth state (registered clients, hashed refresh tokens) and Caddy state. The search index is rebuildable and excluded.
 # The archive holds secrets (.env): mode 600; set BRAIN_BACKUP_PASSPHRASE to encrypt it.
 #   --dest DIR      output directory (default <state-dir>/backups)
 #   --keep N        keep only the newest N archives in --dest
@@ -43,7 +43,7 @@ fi
 tar -C "$DATA" --exclude='./_search' --exclude='__pycache__' --exclude='.pytest_cache' \
     --transform 's,^\./,repo/,;s,^\.$,repo,' -cf "$work/$name" .
 inc=()
-for d in caddy/data caddy/config caddy/conf.d auth auth-idp; do [ -d "$STATE/$d" ] && inc+=("$d"); done
+for d in caddy/data caddy/config auth; do [ -d "$STATE/$d" ] && inc+=("$d"); done
 if [ "${#inc[@]}" -gt 0 ]; then
   tar -C "$STATE" --transform 's,^,state/,' -rf "$work/$name" "${inc[@]}"
 fi
