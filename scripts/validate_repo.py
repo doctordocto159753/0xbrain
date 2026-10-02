@@ -30,6 +30,7 @@ IGNORED_PREFIXES = (
     ".venv/",           # local dev/test environment (git-ignored), never content
     "venv/",
     "_search/",
+    "_originals/",       # immutable originals are opaque bytes, never Markdown records
     "02-sources/provenance/",
     "_proposals/patches/",
     "_proposals/generated/",
