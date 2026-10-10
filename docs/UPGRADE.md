@@ -33,6 +33,15 @@ To re-apply the same upstream code after a rollback, revert the revert
 (`git revert <revert-commit>`) before the next `upgrade.sh`: Git considers
 the reverted commits already merged.
 
+## Enrichment layer (R1) upgrades
+
+Do **not** use `scripts/upgrade.sh` to introduce the enrichment layer on a stack that has a
+compose override, a non-Caddy front, or any service besides `brain` that must not move: it runs
+`dc up -d` without a service name and a recursive `chown -R` over the archive, and its rollback
+reverts a commit range in the repository that also holds the archive. Use the bounded,
+rehearsable tooling instead: `docs/enrichment/upgrade.md` (hazards with file:line evidence,
+stages, stop conditions) and the one-page `docs/enrichment/runbook.md`.
+
 ## Known friction
 
 `instantiate.py` rewrites the record prefix inside some code and docs, so an

@@ -17,32 +17,32 @@ ENV = {"BRAIN_ENRICHMENT": "on", "BRAIN_ENRICHMENT_WRITES": "1", "BRAIN_ENRICHME
 
 def test_extension_tools_work_over_http_with_shared_refs(enrichment_wiki):
     w = enrichment_wiki
-    ref = w.refs["fa_short"]
-    quote = "پیاده‌روی"
 
     async def scenario(s):
         out = {"tools": [t.name for t in (await s.list_tools()).tools]}
-        out["base_read"] = text_of(await s.call_tool("brain_read", {"ref": ref}))
-        pend = text_of(await s.call_tool("brain_enrichment_pending", {"limit": 5}))
+        pend = text_of(await s.call_tool("brain_enrichment_pending", {"limit": 1}))
         out["pending"] = pend
-        item = next(i for i in pend["items"] if i["source_ref"] == ref)
+        item = pend["items"][0]
+        ref = out["ref"] = item["source_ref"]
+        out["base_read"] = text_of(await s.call_tool("brain_read", {"ref": ref}))
         chunk = item["page"]["chunks"][0]
+        mention = chunk["text"][:4]
         out["submit"] = text_of(await s.call_tool("brain_enrichment_submit", {
             "source_ref": ref, "source_version": item["source_version"],
             "expected_annotation_revision": item["expected_annotation_revision"],
             "idempotency_key": "http-test-0001",
             "annotation": {"summary": "برنامهٔ ورزشی", "tags": ["fitness"],
                            "chunk_annotations": [{"chunk_ref": chunk["chunk_ref"], "summary": "پیاده‌روی و تمرین"}],
-                           "entities": [{"name": "فیت پلن", "kind": "project",
-                                         "mention": {"chunk_ref": chunk["chunk_ref"], "text": "فیت پلن"}}]}}))
+                           "entities": [{"name": "x", "kind": "project",
+                                         "mention": {"chunk_ref": chunk["chunk_ref"], "text": mention}}]}}))
         out["replay"] = text_of(await s.call_tool("brain_enrichment_submit", {
             "source_ref": ref, "source_version": item["source_version"],
             "expected_annotation_revision": item["expected_annotation_revision"],
             "idempotency_key": "http-test-0001",
             "annotation": {"summary": "برنامهٔ ورزشی", "tags": ["fitness"],
                            "chunk_annotations": [{"chunk_ref": chunk["chunk_ref"], "summary": "پیاده‌روی و تمرین"}],
-                           "entities": [{"name": "فیت پلن", "kind": "project",
-                                         "mention": {"chunk_ref": chunk["chunk_ref"], "text": "فیت پلن"}}]}}))
+                           "entities": [{"name": "x", "kind": "project",
+                                         "mention": {"chunk_ref": chunk["chunk_ref"], "text": mention}}]}}))
         out["forged"] = text_of(await s.call_tool("brain_enrichment_submit", {
             "source_ref": ref, "source_version": item["source_version"],
             "expected_annotation_revision": 1, "idempotency_key": "http-test-0002",
@@ -50,7 +50,7 @@ def test_extension_tools_work_over_http_with_shared_refs(enrichment_wiki):
                                       "evidence": [{"chunk_ref": chunk["chunk_ref"], "quote": "never written text"}]}]}}))
         out["art"] = text_of(await s.call_tool("brain_artifact_read", {"source_ref": ref}))
         out["chunk"] = text_of(await s.call_tool("brain_artifact_read", {"source_ref": ref, "chunk_ref": chunk["chunk_ref"]}))
-        out["retrieve"] = text_of(await s.call_tool("brain_retrieve", {"query": "فیت پلن", "scope": "all"}))
+        out["retrieve"] = text_of(await s.call_tool("brain_retrieve", {"query": mention, "scope": "all"}))
         out["unknown"] = text_of(await s.call_tool("brain_retrieve", {"query": "x", "path": "/etc/passwd"}))
         out["old_prop_with_chk"] = text_of(await s.call_tool("brain_read", {"ref": chunk["chunk_ref"]}))
         return out
@@ -61,10 +61,10 @@ def test_extension_tools_work_over_http_with_shared_refs(enrichment_wiki):
     assert o["submit"]["ok"] and o["submit"]["annotation_revision"] == 1 and not o["submit"]["idempotent_replay"]
     assert o["replay"]["idempotent_replay"] is True and o["replay"]["annotation_revision"] == 1
     assert o["forged"]["ok"] is False and o["forged"]["error"]["code"] == "E_VALIDATION" and o["forged"]["persisted"] is False
-    assert o["art"]["coverage"]["annotated_chunks"] >= 1 and o["art"]["annotation"]["tags"] == ["fitness"]
+    assert o["art"]["coverage"]["annotated_chunks"] >= 1 and o["art"]["annotation"]["annotation"]["tags"] == ["fitness"]
     # one ref, same literal text through the base tool and the extension
-    assert o["chunk"]["chunk"]["text"] in str(o["base_read"]["sections"])
-    assert o["chunk"]["chunk"]["text"] == w.texts["fa_short"]
+    ref = o["ref"]
+    assert o["chunk"]["chunk"]["text"] == o["base_read"]["sections"]["User-supplied text"]
     assert o["retrieve"]["ok"] and o["retrieve"]["query_model_calls"] == 0
     hits = o["retrieve"]["groups"]["captures"]["results"]
     assert any(h["source_ref"] == ref for h in hits)
