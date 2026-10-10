@@ -16,6 +16,9 @@ reject it. You cannot approve, promote, review or change anything.
    At least one key is required. A partial answer is fine: for one page of a
    long source return `chunk_annotations` (and entities/links you can prove on
    this page) and leave `summary` out unless this page is the whole source.
+   Annotate EVERY chunk of the page you were given with a `chunk_annotations`
+   entry: the queue counts a chunk as covered only when it has one, and a
+   source with uncovered chunks is offered again on the next turn.
 3. Never send `path`, `authority`, `authority_level`, `tier`, `actor`, `owner`,
    `canonical`, `status`, `revision`, ids you invented, or anything shell-like.
    The server computes those; sending one rejects the submission.
