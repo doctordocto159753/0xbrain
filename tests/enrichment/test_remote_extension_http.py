@@ -51,6 +51,7 @@ def test_extension_tools_work_over_http_with_shared_refs(enrichment_wiki):
         out["art"] = text_of(await s.call_tool("brain_artifact_read", {"source_ref": ref}))
         out["chunk"] = text_of(await s.call_tool("brain_artifact_read", {"source_ref": ref, "chunk_ref": chunk["chunk_ref"]}))
         out["retrieve"] = text_of(await s.call_tool("brain_retrieve", {"query": mention, "scope": "all"}))
+        out["by_metadata"] = text_of(await s.call_tool("brain_retrieve", {"query": "fitness", "scope": "captures"}))
         out["unknown"] = text_of(await s.call_tool("brain_retrieve", {"query": "x", "path": "/etc/passwd"}))
         out["old_prop_with_chk"] = text_of(await s.call_tool("brain_read", {"ref": chunk["chunk_ref"]}))
         return out
@@ -68,5 +69,10 @@ def test_extension_tools_work_over_http_with_shared_refs(enrichment_wiki):
     assert o["retrieve"]["ok"] and o["retrieve"]["query_model_calls"] == 0
     hits = o["retrieve"]["groups"]["captures"]["results"]
     assert any(h["source_ref"] == ref for h in hits)
+    # an annotation-only term (a tag) is found with no manual index refresh
+    meta_hits = o["by_metadata"]["groups"]["captures"]["results"]
+    assert o["by_metadata"]["path"] == "enrichment" and o["by_metadata"]["uses_candidate_annotations"] is True
+    assert any(h["source_ref"] == ref and "metadata" in h["inclusion_reason"]["paths"] for h in meta_hits)
+    assert all(h["text"] for h in meta_hits)                    # metadata routes to text, never replaces it
     assert o["unknown"]["error"]["code"] == "E_UNKNOWN_ARGUMENT"
     assert o["old_prop_with_chk"]["ok"] is False          # chk: is not a base-tool ref

@@ -548,6 +548,7 @@ class ExtensionSurface:
         if not self.config.retrieval:
             reason = "enrichment retrieval is disabled (BRAIN_ENRICHMENT_RETRIEVAL=0)"
         else:
+            self._refresh_index()
             try:
                 result = self.s.retrieval().retrieve(request)
             except C.EnrichmentError as exc:
@@ -562,6 +563,16 @@ class ExtensionSurface:
                 result.setdefault("query_model_calls", 0)
                 return result
         return self._fallback(request, reason)
+
+    def _refresh_index(self) -> None:
+        """Bounded incremental refresh at the start of a retrieve (CONTRACT-E1
+        section 7): at most INDEX_REFRESH_BATCH artifacts, never a full rebuild.
+        Best effort: any failure leaves the previous generation in service and
+        retrieval reports the lag."""
+        try:
+            self.s.index(create=False).refresh(C.INDEX_REFRESH_BATCH, trust_marker=True)
+        except Exception:  # noqa: BLE001 - lag is reported by retrieval, never an error here
+            pass
 
     def _fallback(self, request: dict, reason: str) -> dict:
         """Explicit fallback to the base lexical search, then exact. Never silent:
