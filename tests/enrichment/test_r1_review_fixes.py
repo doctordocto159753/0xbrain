@@ -6,10 +6,13 @@ service, FTS5 index, retrieval engine, extension surface) over the seeded
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from brain_enrichment import contract as C  # noqa: E402
 from test_e2e_extension import CFG, build_index, find_pending, stack, submit  # noqa: E402,F401
+from test_upgrade import rig  # noqa: E402,F401  (fixture)
 
 
 def _hits(out):
@@ -245,3 +248,57 @@ def test_the_r1_release_diff_is_inside_the_upgrade_allowlist():
                            capture_output=True, text=True, check=True).stdout.split()
     refused = {p: up.classify_path(p) for p in paths if up.classify_path(p)[0] in ("outside", "forbidden")}
     assert not refused, refused
+
+
+def test_level2_rollback_keeps_the_sidecar_and_says_when_it_is_untracked(rig, tmp_path):
+    """After a level-2 rollback a pre-R1 .gitignore no longer ignores _enrichment/ (kept: it is
+    data). The operator must be told, since a manual `git add -A` would commit private text."""
+    import importlib.util
+    import sys
+
+    rc, o, e, plan_path = rig.plan()
+    copy = rig.root / "copy"
+    assert rig.run("apply", "--wiki", rig.wiki, "--plan", plan_path, "--copy-dir", copy)[0] == 0
+    (copy / "_enrichment").mkdir()
+    (copy / "_enrichment" / "store-v1.sqlite3").write_bytes(b"x")
+    work = rig.root / "copy.work"
+    rc, o, e = rig.run("rollback", "--wiki", rig.wiki, "--level", 2, "--plan", plan_path, "--work-dir", work, "--copy-dir", copy)
+    rc, o, e = rig.run("rollback", "--wiki", rig.wiki, "--level", 2, "--plan", plan_path, "--work-dir", work, "--copy-dir", copy,
+                       "--execute", "--confirm", rig.token(o))
+    assert rc == 0 and "ROLLBACK OK" in o, (o, e)
+    assert (copy / "_enrichment" / "store-v1.sqlite3").read_bytes() == b"x"      # data is never removed
+    up = sys.modules.get("upgrade_enrichment_r")
+    if up is None:
+        root = Path(__file__).resolve().parents[2]
+        spec = importlib.util.spec_from_file_location("upgrade_enrichment_r", root / "scripts/upgrade-enrichment.py")
+        up = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = up
+        spec.loader.exec_module(up)
+    restored_ignores = "_enrichment/" in (copy / ".gitignore").read_text().splitlines()
+    assert ("no longer git-ignored" in o) == (not restored_ignores), o
+    w = tmp_path / "w"
+    (w / "_enrichment").mkdir(parents=True)
+    (w / ".gitignore").write_text("_search/\n")                          # a pre-R1 .gitignore
+    assert "no longer git-ignored" in up.sidecar_untracked_warning(w)
+    (w / ".gitignore").write_text("_search/\n_enrichment/\n")
+    assert up.sidecar_untracked_warning(w) is None
+
+
+def test_level3_salvage_includes_entry_pages_changed_after_the_backup(rig):
+    """An ingest after the backup updates the entry-page markers (HOME/README/SYSTEM_DESIGN/CLAUDE)
+    together with the registers. A disaster restore must salvage them with the other inputs."""
+    from test_upgrade import run_backup
+
+    dest = rig.root / "bk"
+    run_backup(rig, dest)
+    arch = next(dest.glob("*.tar.gz"))
+    home = rig.wiki / "HOME.md"
+    home.write_text(home.read_text(encoding="utf-8") + "\nmarker moved by a post-backup ingest\n", encoding="utf-8")
+    work, restore = rig.root / "w3", rig.root / "restored"
+    args = ["rollback", "--wiki", rig.wiki, "--level", 3, "--work-dir", work, "--disaster-restore", "--archive", arch,
+            "--restore-dir", restore]
+    rc, o, e = rig.run(*args)
+    rc, o, e = rig.run(*args, "--execute", "--confirm", rig.token(o))
+    assert rc == 0 and "DISASTER RESTORE OK" in o, (o, e)
+    salv = next(work.glob("post-backup-inputs-*"))
+    assert (salv / "files" / "HOME.md").read_bytes() == home.read_bytes()

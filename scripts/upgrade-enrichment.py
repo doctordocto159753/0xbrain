@@ -1601,6 +1601,18 @@ def classify_for_rollback(deps: Deps, root: Path, work: Path, e: dict) -> dict:
     return r
 
 
+def sidecar_untracked_warning(root: Path) -> str | None:
+    """After a level-2 rollback the restored pre-R1 .gitignore may not ignore the sidecar. The store
+    (private copies of corpus text) is kept, as data, but becomes an untracked path: K9 commits use
+    pathspecs and promote never sweeps it, yet a manual `git add -A` would commit it."""
+    gi = root / ".gitignore"
+    ignored = gi.is_file() and re.search(r"(?m)^/?_enrichment/?\s*$", gi.read_text("utf-8", "replace"))
+    if (root / eb.ENRICHMENT_DIR).is_dir() and not ignored:
+        return (f"[WARN] {eb.ENRICHMENT_DIR}/ is kept (it is data) but is no longer git-ignored: never `git add -A` here; "
+                f"to hide it locally add `{eb.ENRICHMENT_DIR}/` to .git/info/exclude (this tool does not write under .git).")
+    return None
+
+
 def cmd_rollback(a, deps: Deps) -> int:
     wiki, F, _ = common_setup(a, deps)
     if a.level == 3:
@@ -1660,6 +1672,9 @@ def cmd_rollback(a, deps: Deps) -> int:
     if bad:
         raise ToolError(f"post-rollback hash check failed for {bad}", EXIT_FAIL)
     deps.say(f"ROLLBACK OK: {sum(1 for r in rows if r['action'] != 'already-original')} path(s) restored, hashes verified.")
+    warn = sidecar_untracked_warning(root)
+    if warn:
+        deps.say(warn)
     if ctx:
         r = deps.run(ctx.up(), cwd=ctx.project_dir, timeout=600)
         ok, st, _ = wait_healthy(deps, ctx)
@@ -1708,6 +1723,11 @@ def rollback_level3(a, deps: Deps, wiki: Path) -> int:
     for rel, rec in corpus_manifest(wiki)["files"].items():
         arc = manifest["files"].get(f"repo/{rel}")
         if arc is None or arc.get("sha256") != rec["sha256"]:
+            inputs.append(rel)
+    for rel in MARKER_FILES:              # entry pages carry the counters an ingest/promotion updates
+        p = wiki / rel
+        arc = manifest["files"].get(f"repo/{rel}")
+        if p.is_file() and not p.is_symlink() and (arc is None or arc.get("sha256") != eb.sha256_file(p)):
             inputs.append(rel)
     store = wiki / eb.ENRICHMENT_DIR
     deps.say("== ROLLBACK level 3 (disaster restore, explicit) ==")

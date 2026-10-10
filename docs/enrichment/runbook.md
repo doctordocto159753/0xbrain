@@ -55,6 +55,8 @@ archive from before the first batch; never loop on a failing source (explicit re
 | Disaster (explicit) | `python $U rollback --wiki W --level 3 --disaster-restore --archive OUT/backups/<a> --restore-dir NEWDIR --work-dir OUT/w3 [--replay-inputs]` |
 
 Level 2 STOPs and changes nothing if any released file changed after the release: resolve those
-files by hand, or use level 1. After level 3 the cutover is yours (point `BRAIN_DATA_DIR` at the
+files by hand, or use level 1. Level 2 keeps `_enrichment/` (it is data), but the restored pre-R1
+`.gitignore` no longer ignores it: the tool warns; never `git add -A` on the live tree, and add
+`_enrichment/` to `.git/info/exclude` if you want it hidden locally. After level 3 the cutover is yours (point `BRAIN_DATA_DIR` at the
 restored tree, recreate only `brain`). Never use `docker compose down`, `git reset --hard`,
 `git clean`, a stash, `restore-backup.sh --force` or a recursive `chown` on the live deployment.
