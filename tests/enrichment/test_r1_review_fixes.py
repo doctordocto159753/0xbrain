@@ -6,6 +6,7 @@ service, FTS5 index, retrieval engine, extension surface) over the seeded
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -466,3 +467,87 @@ def test_a_held_file_is_one_holding_in_supplemented_results(stack):
     refs = [h["source_ref"] for h in _hits(out)]
     assert w.refs["held_ok"] in refs, out
     assert w.refs["held_ok_text"] not in refs, refs
+
+
+# ------------------------------------------- F8: the input-size limit reaches the store
+def test_max_input_chars_config_bounds_the_pending_page(enrichment_wiki):
+    """BRAIN_ENRICHMENT_MAX_INPUT_CHARS caps a page of text offered to the annotator; the real
+    store factory ignored it and always used the 24000 default."""
+    from brain_enrichment.config import EnrichmentConfig
+    from brain_enrichment.surface import build_extension
+
+    w = enrichment_wiki
+    cfg = EnrichmentConfig.from_env({"BRAIN_ENRICHMENT": "on", "BRAIN_ENRICHMENT_MAX_INPUT_CHARS": "2000"})
+    assert cfg.max_input_chars == 2000 and not cfg.warnings
+    ext = build_extension(w.root, cfg)
+    item, cursor = None, None
+    for _ in range(20):
+        out = ext.call("brain_enrichment_pending", {"limit": 1, **({"cursor": cursor} if cursor else {})})
+        assert out["ok"], out
+        item = next((i for i in out["items"] if i["source_ref"] == w.refs["long"]), None)
+        if item:
+            break
+        cursor = out["next_cursor"]
+    assert item is not None
+    page = item["page"]
+    assert page["total"] >= 2 and page["returned"] == 1 and page["truncated"], page
+
+
+def test_chunker_fuzz_partition_substring_bounds_crlf_determinism():
+    """Random Persian/English/CRLF/lone-CR/table/front-matter/page-marker texts: chunks partition
+    the layer, each is the exact substring, none exceeds HARD_MAX, a CRLF pair is never split and
+    the output is deterministic (review gate: offsets and coverage)."""
+    import random
+
+    from brain_enrichment.chunking import Chunker
+    from support import make_projection
+
+    pieces = ["# عنوان\n", "## Page 3\n", "## Slide 2\n", "\n", "\r\n", "\r", "| a | b |\n", "|---|---|\n",
+              "پاراگراف فارسی با نیم‌فاصله و ۱۲۳ رقم. ", "English sentence here. ", "no-boundary-" * 50, "؟ ",
+              "---\nid: x\n---\n", "\\## escaped\n", "‌", "\U0001F600", "x" * 700, "\n\n", "line\r\nline2\r\n"]
+    rng = random.Random(20261010)
+    ref = "cap:cap-20261001-000000-abcd"
+    for _ in range(400):
+        text = "".join(rng.choice(pieces) for _ in range(rng.choice([1, 5, 50, 200, 600, 1500])))
+        p = make_projection(ref, [("user-text", ref, text, None)])
+        chunks = Chunker().build(p, C.ChunkPolicy())
+        pos = 0
+        for c in chunks:
+            assert c.start_char == pos and c.text == text[c.start_char:c.end_char]
+            assert 0 < c.end_char - c.start_char <= C.HARD_MAX
+            assert not (c.start_char and text[c.start_char - 1] == "\r" and text[c.start_char] == "\n")
+            pos = c.end_char
+        assert pos == len(text)
+        assert [(c.chunk_ref, c.start_char) for c in Chunker().build(p, C.ChunkPolicy())] == \
+               [(c.chunk_ref, c.start_char) for c in chunks]
+
+
+def test_corrupt_store_and_index_never_break_the_seven_base_tools(enrichment_wiki):
+    """Garbage in both sidecar files (disk fault, half-copied restore): through the real adapter
+    with the feature on, the base tools keep working, the extension answers with a clean error
+    (no path, no traceback) and brain_retrieve falls back to the base search explicitly."""
+    from remote_mcp import adapter as A
+
+    w = enrichment_wiki
+    env = {"BRAIN_ENRICHMENT": "on", "BRAIN_ENRICHMENT_WRITES": "1", "BRAIN_ENRICHMENT_RETRIEVAL": "1"}
+    tools = {t.name: t for t in A.semantic_adapter(w.root, env=env)}
+    assert tools["brain_enrichment_pending"].handler({"limit": 1})["ok"]          # create a real store
+    for rel in (C.STORE_REL, C.INDEX_REL):
+        p = w.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        for suffix in ("-wal", "-shm"):
+            Path(str(p) + suffix).unlink(missing_ok=True)
+        p.write_bytes(b"this is not a sqlite database" * 100)
+    tools = {t.name: t for t in A.semantic_adapter(w.root, env=env)}            # a fresh server process
+    assert len(tools) == 11
+    cap = tools["brain_capture"].handler({"text": "capture while the sidecar is broken", "language_hint": "en"})
+    assert cap["ok"] and cap["persisted"], cap
+    assert tools["brain_read"].handler({"ref": cap["ref"]})["ok"]
+    assert tools["brain_search"].handler({"query": "sidecar is broken", "mode": "exact", "scope": "captures"})["ok"]
+    assert tools["brain_status"].handler({})["ok"]
+    pend = tools["brain_enrichment_pending"].handler({"limit": 1})
+    assert pend["ok"] is False and pend["error"]["code"] in ("E_UNAVAILABLE", "E_SCHEMA_UNSUPPORTED"), pend
+    assert str(w.root) not in json.dumps(pend) and "Traceback" not in json.dumps(pend)
+    ret = tools["brain_retrieve"].handler({"query": "sidecar is broken"})
+    assert ret["ok"] and ret["path"].startswith("fallback-") and ret["query_model_calls"] == 0, ret
+    assert any(h["source_ref"] == cap["ref"] for g in ret["groups"].values() for h in g["results"]), ret

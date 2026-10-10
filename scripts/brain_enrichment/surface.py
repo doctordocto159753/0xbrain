@@ -177,7 +177,9 @@ class Services:
             try:
                 return _call_factory(obj, {"root": self.root, "wiki_root": self.root,
                                            "index_path": self.root / C.INDEX_REL,
-                                           "config": self.config, **available})
+                                           "config": self.config,
+                                           # BRAIN_ENRICHMENT_MAX_INPUT_CHARS: the pending page cap
+                                           "max_input_chars": self.config.max_input_chars, **available})
             except C.EnrichmentError:
                 raise
             except sqlite3.Error as exc:
