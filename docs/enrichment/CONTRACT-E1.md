@@ -186,6 +186,16 @@ inherited by chunks; `chunk_annotations` carry only additions/differences. An ar
 is stored with the coverage it was produced under; incomplete coverage is never presented as
 a full-artifact summary.
 
+Amendment (R1 review, F1): a long source is annotated page by page, one revision per page, so the
+metadata of an artifact is the **effective annotation** of its current version
+(`store.compose_effective`): rejected revisions never contribute; the window starts at the latest
+*complete* revision (its own `chunk_annotations` name every chunk, or the version has at most one
+chunk) and runs to the newest; artifact fields come from the newest revision in the window that
+carries them; `chunk_annotations` are the newest entry per chunk; entities/links/derived entries are
+a union (newest wins per key) and keep the revision they came from. The index, the graph and
+`brain_artifact_read` (`annotation.effective_annotation`, `annotation_for_chunk`) use it; the raw
+revisions are unchanged and auditable.
+
 ## 6. Store (`_enrichment/store-v1.sqlite3`)
 
 `PRAGMA user_version = 1`, WAL, `foreign_keys=ON`, one writer transaction per mutation,
@@ -225,6 +235,11 @@ build into a new generation, then activate atomically (a pointer row / rename);
 readers read the active generation and never a half-built one. Incremental refresh
 (`IndexBuilder.refresh(batch_limit)`) processes dirty artifacts under a batch/time cap;
 a full rebuild is a CLI action only, never inside a query.
+Amendment (R1 review, F2): the refresh `brain_retrieve` runs first is non-blocking (an in-process lock
+plus a cross-process `flock` on `search-v1.sqlite3.lock`, also taken by the CLI: a concurrent refresh
+is skipped, never raced), writes at most `INDEX_REFRESH_BATCH` artifacts and 2 s, detects dirty
+artifacts from a text-free store scan (`list_current_light`, same fingerprint) and reads text only for
+the batch it writes (`get_current_items`).
 
 Tables (informative): `fts_chunks` (FTS5: `normal_form(text)`, unicode61 remove_diacritics, with
 stored `chunk_ref`), `fts_meta` (FTS5 over normal-formed summary/topics/tags/entity names/aliases per
@@ -273,6 +288,12 @@ Request: `{query, scope (default all), limit (default 10, max 50), budget_tokens
 8. Partial index (backfill incomplete / lag): candidates of the legacy search (QMD lexical -> exact,
    explicit, per-source `hit_level="source"`, no invented `chunk_ref`) are added for sources without a
    current projection; `coverage` reports the gap.
+   Amendment (R1 review, F6/F7): with a complete index and no cursor, a page that dropped stale chunks
+   or found nothing also asks the base search and keeps refs the index does not cover or covers with a
+   superseded on-disk version (a source edited after indexing), as `hit_level="source"` hits;
+   `index.fresh` is false and a note names the cause whenever stale chunks were dropped; the cursor
+   records it so later pages rebuild the same order. A base hit on a layer `text_ref` (the `doc:` of an
+   ingested file) belongs to its indexed holding and is never listed twice.
 9. Index missing/corrupt/FTS5 absent/`BRAIN_ENRICHMENT_RETRIEVAL=0`: explicit fallback to the base lexical
    search, then exact if lexical is unavailable or empty; `path` says which one ran; never silent.
 10. `cursor` binds `{query digest, scope, source-freshness token, index generation, offset}`; a generation
