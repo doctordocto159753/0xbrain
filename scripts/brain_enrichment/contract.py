@@ -419,8 +419,10 @@ class ProjectionStore(Protocol):
     def get_chunk(self, chunk_ref: str) -> Chunk: ...   # E_NOT_FOUND | E_STALE_SOURCE (superseded version)
     def entity_exists(self, entity_id: str) -> bool: ...
     def list_current(self, after: str | None, limit: int) -> list[dict]: ...
-    # list_current item: {"projection": SourceProjection, "chunks": list[Chunk], "annotation": dict|None,
-    #   "annotation_revision": int|None, "review_state": str, "processing_state": str}
+    # list_current: ordered by source_ref ascending, source_ref > after, at most `limit`.
+    # item: {"projection": SourceProjection, "chunks": list[Chunk], "annotation": dict|None,
+    #   "annotation_revision": int|None, "derived": dict|None (stored block of that revision),
+    #   "review_state": "unreviewed"|"confirmed"|"rejected" (of THAT revision), "processing_state": str}
     def change_marker(self) -> int: ...                 # monotonic; moves on any projection/annotation/review write
 
 

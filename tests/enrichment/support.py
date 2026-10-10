@@ -213,6 +213,7 @@ class FakeProjectionStore:
         self.revisions: dict[str, list[dict]] = {}       # source_ref -> [{revision, source_version, annotation}]
         self.receipts: dict[tuple, tuple] = {}           # (source_ref, key) -> (digest, receipt)
         self.reviews: list[dict] = []
+        self._marker = 0
 
     def upsert_projection(self, projection, chunks):
         prev = self.projections.get(projection.source_ref)
@@ -221,6 +222,7 @@ class FakeProjectionStore:
             state = "no_text"
         self.projections[projection.source_ref] = projection
         self.chunks[projection.source_ref] = list(chunks)
+        self._marker += 1
         return C.ProjectionReceipt(projection.source_ref, projection.artifact_id, projection.source_version,
                                    len(chunks), state, prev.source_version if prev else None)
 
@@ -263,6 +265,7 @@ class FakeProjectionStore:
         rev = {"revision": cur_n + 1, "source_version": proj.source_version,
                "annotation": request["annotation"], "derived": request.get("derived")}
         self.revisions.setdefault(ref, []).append(rev)
+        self._marker += 1
         view = self.get(ref)
         receipt = C.AnnotationReceipt(ref, proj.source_version, rev["revision"], False, view.coverage, "annotated")
         self.receipts[(ref, key)] = (digest, receipt)
@@ -272,6 +275,7 @@ class FakeProjectionStore:
         if not human_context or not human_context.get("actor") or human_context.get("remote"):
             raise C.EnrichmentError("E_REVIEW_FORBIDDEN", "review needs a local human context")
         self.reviews.append({**request, "by": human_context["actor"]})
+        self._marker += 1
         return C.ReviewReceipt(request["source_ref"], request["annotation_revision"], request["decision"],
                                human_context["actor"], "2026-10-10T00:00:00Z")
 
@@ -301,15 +305,18 @@ class FakeProjectionStore:
         for r in refs:
             p = self.projections[r]
             cur = self._current_rev(r, p.source_version)
+            decisions = [x for x in self.reviews if x["source_ref"] == r and cur
+                         and x["annotation_revision"] == cur["revision"]]
             out.append({"projection": p, "chunks": list(self.chunks.get(r, [])),
                         "annotation": cur["annotation"] if cur else None,
                         "annotation_revision": cur["revision"] if cur else None,
-                        "review_state": "unreviewed",
+                        "derived": cur.get("derived") if cur else None,
+                        "review_state": decisions[-1]["decision"] if decisions else "unreviewed",
                         "processing_state": "annotated" if cur else p.processing_state})
         return out
 
     def change_marker(self):
-        return len(self.projections) + sum(len(v) for v in self.revisions.values()) + len(self.reviews)
+        return self._marker
 
     def pending(self, cursor, limit, retry_failed=False):
         todo = [r for r, p in self.projections.items() if p.layers and self._current_rev(r, p.source_version) is None]
