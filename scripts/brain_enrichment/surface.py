@@ -174,7 +174,9 @@ class Services:
             if inspect.isclass(obj) and getattr(obj, "__module__", None) != module.__name__:
                 continue                       # a Protocol re-exported from contract, not an implementation
             try:
-                return _call_factory(obj, {"root": self.root, "config": self.config, **available})
+                return _call_factory(obj, {"root": self.root, "wiki_root": self.root,
+                                           "index_path": self.root / C.INDEX_REL,
+                                           "config": self.config, **available})
             except C.EnrichmentError:
                 raise
             except sqlite3.Error as exc:
@@ -262,7 +264,7 @@ class Services:
                 search = (lambda q, mode, scope, n: legacy.search(q, mode, scope, n)) if legacy else None
                 self._svc["retrieval"] = self._build(
                     "retrieval", store=self.store(create=False),
-                    index=self._svc["index"], legacy_backend=legacy, legacy_search=search)
+                    index=self.index(), legacy_backend=legacy, legacy_search=search)
             return self._svc["retrieval"]
 
     def is_injected(self, kind: str) -> bool:

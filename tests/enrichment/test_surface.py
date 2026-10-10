@@ -181,6 +181,15 @@ def annotate(store, proj, chunks, *, key=KEY, expected=0, tags=("a",), chunk=Fal
                                     "annotation": ann})
 
 
+def _without_real_source_reader(name):
+    """Importer for fake-store tests: the real SourceReader would (correctly)
+    report their synthetic sources as missing on disk."""
+    if name == "source":
+        raise ImportError(name)
+    import importlib
+    return importlib.import_module(name)
+
+
 class Rig:
     """store + services + extension over one enrichment_wiki."""
 
@@ -192,6 +201,8 @@ class Rig:
         self.index = FakeIndex()
         self.reader = reader
         self.legacy = WikiBackend(w.root) if legacy == "auto" else legacy
+        if importer is None and reader is None:
+            importer = _without_real_source_reader   # these tests use synthetic projections, not disk sources
         self.importer = importer
         self.ext = build_extension(w.root, config, store=self.store, annotation=self.annotation,
                                    retrieval=self.retrieval, index=self.index, legacy_backend=self.legacy,

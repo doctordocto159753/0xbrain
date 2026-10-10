@@ -162,7 +162,7 @@ WRAPPER = textwrap.dedent('''
     from brain_enrichment.config import EnrichmentConfig
     from brain_enrichment.surface import Services
     from support import make_projection, naive_chunks
-    from test_surface import RichStore
+    from test_surface import RichStore, _without_real_source_reader
     spec = json.load(open(sys.argv[1], encoding="utf-8"))
     store = RichStore()
     for s in spec["sources"]:
@@ -173,7 +173,7 @@ WRAPPER = textwrap.dedent('''
                 "expected_annotation_revision": 0, "idempotency_key": "key-00000001",
                 "annotation": {{"tags": ["wrapped"]}}}})
     cfg = EnrichmentConfig.from_env()
-    sys.exit(cli.main(sys.argv[2:], services=Services({root!r}, cfg, store=store)))
+    sys.exit(cli.main(sys.argv[2:], services=Services({root!r}, cfg, store=store, importer=_without_real_source_reader)))
 ''')
 
 
