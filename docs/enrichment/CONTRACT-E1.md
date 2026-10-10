@@ -171,6 +171,13 @@ request and leave the previous revision untouched, error `E_VALIDATION` with
 "links":[{relation,edge_kind,src,dst,evidence[{chunk_ref,start_char,end_char,occurrences}]}]}`).
 `derived` is excluded from `request_digest` (idempotency compares only caller-supplied content);
 the store persists it and answers `entity_exists` from it.
+Amendment (accepted from WP-B): spans in `derived` are **layer-absolute** code points
+(`chunk.start_char` + offset inside the chunk) so `layer.text[s:e] == quote`; `occurrences` counts
+non-overlapping hits inside the chunk and the span is the first; `derived.validated_at` is informational.
+`E_VALIDATION.reasons` is a list of `{field, code[, ref]}` (capped at 50, `reasons_omitted` for the rest);
+a chunk of another source is reason `chunk_of_another_source`; a superseded version raises `E_STALE_SOURCE`.
+A caller-supplied `derived` key is rejected. The real store must raise `E_STALE_SOURCE` from
+`get_chunks(source_ref, non_current_version)`.
 
 Server stores per revision: `{revision, source_ref, source_version, annotation (validated, normalised copy),
 request_digest, idempotency_key, producer_reported, received_at, coverage{annotated_chunks,total_chunks},

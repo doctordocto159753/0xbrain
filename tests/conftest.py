@@ -104,3 +104,19 @@ def brain_wiki(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def commit_all(root: Path, msg: str = "fixture") -> None:
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "--allow-empty", "-m", msg)
+
+
+# ------------------------------------------------------------ enrichment
+# Fixture for tests/enrichment (CONTRACT-E1). It lives here, not in
+# tests/enrichment/conftest.py: a second module named `conftest` shadows this
+# one when the whole suite is collected in a single process.
+_ENR = KIT_ROOT / "tests" / "enrichment"
+for _p in (str(_ENR), str(KIT_ROOT / "scripts")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+
+@pytest.fixture()
+def enrichment_wiki(brain_wiki):
+    from support import seed_wiki  # noqa: PLC0415
+    return seed_wiki(brain_wiki)
