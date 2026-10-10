@@ -1,0 +1,38 @@
+# 0xBrain annotation job -- TEMPLATE, DISABLED BY DEFAULT.
+#
+# Field names below are this repository's own vocabulary; map them onto your
+# Hermes version's job format before enabling (docs/enrichment/hermes.md,
+# "Compatibility checklist"). Nothing here is read by the archive server.
+#
+# There is deliberately NO credential field in this file: the model provider
+# key and the connector's owner sign-in live in the Hermes secret store /
+# connector configuration, never in this file, the skill, or the archive.
+name: 0xbrain-annotator
+enabled: false                 # the owner flips this by hand after the checklist
+skill: 0xbrain-annotator
+schedule: "7,37 * * * *"       # every 30 min, off the hour; adjust freely
+concurrency: 1                 # never two turns at once
+batch_size: 1                  # one source (one page) per cycle
+timeout_seconds: 240           # hard wall-clock cap for a whole turn
+max_pages_per_turn: 3
+cost:
+  max_usd_per_turn: 0.25
+  max_usd_per_day: 1.00        # daily cost cap; the turn stops when reached
+  est_usd_per_call: 0.02
+retry:
+  max_attempts_transient: 2    # 429 / 503 / timeout: at most 2 attempts in total
+  spacing_seconds: 30
+  on_credit_exhausted: stop    # 402 / no credit: stop at once, no retry
+  on_provider_error: stop
+tools:                         # allow-list; everything else is denied
+  allow:
+    - brain_enrichment_pending
+    - brain_enrichment_submit
+    - brain_artifact_read
+  deny:
+    - shell
+    - docker
+    - filesystem
+    - wiki_files
+connector:
+  name: 0xbrain                # the remote MCP connector, signed in by the owner
