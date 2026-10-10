@@ -302,3 +302,126 @@ def test_level3_salvage_includes_entry_pages_changed_after_the_backup(rig):
     assert rc == 0 and "DISASTER RESTORE OK" in o, (o, e)
     salv = next(work.glob("post-backup-inputs-*"))
     assert (salv / "files" / "HOME.md").read_bytes() == home.read_bytes()
+
+
+# ------------------------------------------------ data preservation (review gate 4)
+def _all_hashes(root):
+    """sha256 + mode of EVERY file under root, .git included, tracked/untracked/ignored alike;
+    only the two sidecar locations the enrichment layer owns are listed separately."""
+    import hashlib
+    import os
+
+    keep, sidecar = {}, set()
+    for dp, _dn, fns in os.walk(root):
+        for f in fns:
+            p = Path(dp) / f
+            rel = p.relative_to(root).as_posix()
+            if rel.startswith(("_enrichment/", "_search/enrichment/")):
+                sidecar.add(rel)
+                continue
+            keep[rel] = (hashlib.sha256(p.read_bytes()).hexdigest(), os.lstat(p).st_mode)
+    return keep, sidecar
+
+
+def test_scan_annotate_index_retrieve_change_no_corpus_byte(stack):
+    import subprocess
+
+    from test_e2e_extension import scan_all
+    import wiki_capture as wc
+
+    w, ext, _ = stack
+    root = w.root
+    # an ignored runtime file, an untracked note and an uncommitted capture next to the committed corpus
+    (root / "_audits/runtime").mkdir(parents=True, exist_ok=True)
+    (root / "_audits/runtime/report.json").write_text('{"ignored": true}\n', encoding="utf-8")
+    (root / "01-inbox/untracked-note.md").write_text("untracked note\n", encoding="utf-8")
+    loose = wc.capture_text("یادداشت ثبت‌نشده: هنوز commit نشده است.", "mcp", "fa")
+    status = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--ignored"],
+                            capture_output=True, text=True).stdout
+    assert "!! _audits/" in status and "?? 01-inbox/untracked-note.md" in status
+    h0, side0 = _all_hashes(root)
+    assert not side0
+
+    scan_all(w)                                                     # discovery + projection (CLI)
+    h1, side1 = _all_hashes(root)
+    assert h1 == h0 and side1 and all(p.startswith("_enrichment/") for p in side1)
+
+    item, _ = find_pending(ext, w.refs["fa_short"])                 # annotation of a capture
+    assert submit(ext, item, {"summary": "plan", "tags": ["fitness"]}, key="keep-bytes-0001")["ok"]
+    h2, _ = _all_hashes(root)
+    assert h2 == h0
+
+    build_index(ext)                                                # derived index
+    h3, side3 = _all_hashes(root)
+    assert h3 == h0 and any(p.startswith("_search/enrichment/") for p in side3)
+
+    for q in ("فیت پلن", "fitness", "ferry Kolan", "Project Nil", "هنوز commit نشده"):
+        assert ext.call("brain_retrieve", {"query": q})["ok"]
+    assert ext.call("brain_artifact_read", {"source_ref": w.refs["held_ok"]})["ok"]
+    h4, _ = _all_hashes(root)
+    assert h4 == h0
+
+    # --- the corpus moves on (owner/promotion edits, a removal, a new capture DURING a backfill pass)
+    canon = root / w.paths["canonical"]
+    old_chunk = ext.call("brain_artifact_read", {"source_ref": w.refs["canonical"]})["chunks"]["items"][0]["chunk_ref"]
+    dup_b = ext.call("brain_artifact_read", {"source_ref": w.refs["dup_b"]})["chunks"]["items"][0]["chunk_ref"]
+    canon.write_text(canon.read_text(encoding="utf-8").replace("second novel", "second novel, renamed Nile Delta"),
+                     encoding="utf-8")
+    (root / w.paths["dup_b"]).unlink()
+    ext.call("brain_enrichment_pending", {"limit": 1})                # a backfill pass is under way ...
+    fresh = wc.capture_text("ورودی تازه حین backfill: Zebrafish protocol", "mcp", "fa")   # ... a capture arrives
+    h5, _ = _all_hashes(root)
+
+    # stale and deleted chunks are never served as current evidence
+    stale = ext.call("brain_artifact_read", {"source_ref": w.refs["canonical"], "chunk_ref": old_chunk})
+    assert not stale["ok"] and stale["error"]["code"] == "E_STALE_SOURCE", stale
+    gone = ext.call("brain_artifact_read", {"source_ref": w.refs["dup_b"], "chunk_ref": dup_b})
+    assert not gone["ok"] and gone["error"]["code"] in ("E_NOT_FOUND", "E_STALE_SOURCE"), gone
+    out = ext.call("brain_retrieve", {"query": "Project Nil working title"})
+    assert all(h["chunk_ref"] != old_chunk for h in _hits(out))
+    # the new capture is findable before the backfill reaches it (explicit source-level fallback) ...
+    early = ext.call("brain_retrieve", {"query": "Zebrafish protocol"})
+    assert any(h["source_ref"] == f"cap:{fresh['id']}" for h in _hits(early)), early
+    # ... and as chunk text once discovery has run; the edited record serves its NEW text
+    scan_all(w)
+    build_index(ext)
+    late = ext.call("brain_retrieve", {"query": "Zebrafish protocol"})
+    assert any(h["source_ref"] == f"cap:{fresh['id']}" and h["chunk_ref"] for h in _hits(late)), late
+    nile = ext.call("brain_retrieve", {"query": "Nile Delta"})
+    assert any(h["source_ref"] == w.refs["canonical"] and "Nile Delta" in h["text"] for h in _hits(nile)), nile
+    assert ext.call("brain_artifact_read", {"source_ref": w.refs["dup_b"]})["error"]["code"] == "E_NOT_FOUND"
+    h6, _ = _all_hashes(root)
+    assert h6 == h5, sorted(k for k in set(h5) | set(h6) if h5.get(k) != h6.get(k))
+    assert (root / loose["path"]).is_file() and (root / "_audits/runtime/report.json").is_file()
+
+
+# ------------------------------- F6: an edited source is never a silent "not found"
+def test_source_edited_after_indexing_is_found_before_the_next_discovery(stack):
+    """A promotion edits a canonical record; a transcript is added to a voice capture. Until the
+    next discovery pass the index holds the old version: retrieval must neither serve the old
+    chunk nor answer an empty, 'fresh' result while the base search sees the new text."""
+    from test_e2e_extension import scan_all
+    import wiki_capture as wc
+
+    w, ext, base = stack
+    scan_all(w)
+    build_index(ext)
+    canon = w.root / w.paths["canonical"]
+    canon.write_text(canon.read_text(encoding="utf-8").replace("second novel", "second novel, renamed Nile Delta"),
+                     encoding="utf-8")
+    wc.record_transcript(w.refs["voice_plain"][4:], "متن پیاده‌شده: جلسهٔ Quasar ساعت نه است.\n", "fixture-stt", "1",
+                         reviewed=False)
+    assert base.call("brain_search", {"query": "Nile Delta", "mode": "exact", "scope": "all"})["groups"]["canonical"]["count"]
+
+    new = ext.call("brain_retrieve", {"query": "Nile Delta"})
+    hits = _hits(new)
+    assert any(h["source_ref"] == w.refs["canonical"] and h["hit_level"] == "source" and h["chunk_ref"] is None
+               for h in hits), new
+    assert new["coverage"]["source_level_fallback_hits"] >= 1
+    voice = ext.call("brain_retrieve", {"query": "Quasar"})
+    assert any(h["source_ref"] == w.refs["voice_plain"] for h in _hits(voice)), voice
+
+    old = ext.call("brain_retrieve", {"query": "working title second novel"})
+    assert old["coverage"]["stale_dropped"] >= 1 and old["index"]["fresh"] is False
+    assert any("changed on disk" in n for n in old["notes"]), old["notes"]
+    assert all(h["chunk_ref"] is None for h in _hits(old) if h["source_ref"] == w.refs["canonical"])

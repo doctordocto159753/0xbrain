@@ -320,6 +320,16 @@ class RetrievalEngine:
         ordered = {g: self._order(list(cands[g].values()), window, notes) for g in groups}
         pos = {g: (cur["o"].get(g, 0) if cur else 0) for g in groups}
         page = self._assemble(args, groups, ordered, pos, reader)
+        empty = not any(page["hits"][g] for g in groups)
+        if (not cur and pending == 0 and self.legacy_search is not None and (page["stale"] or empty)):
+            # A source edited after it was indexed (a promotion, a transcript added to a voice capture)
+            # is dropped as stale, and its NEW text is not in the index until the next discovery pass.
+            # The base search sees the disk: ask it, keep only refs the index does not cover or covers
+            # with a superseded version. Never an empty "not found" while the corpus says otherwise.
+            fallback_hits = self._legacy_supplement(args, groups, cands, reader, notes, allow_stale=True)
+            if fallback_hits:
+                ordered = {g: self._order(list(cands[g].values()), window, notes) for g in groups}
+                page = self._assemble(args, groups, ordered, {g: 0 for g in groups}, reader)
         has_more = any(page["pos"][g] < len(ordered[g]) for g in groups)
         budget_stop = page["budget_stop"]
         reason = "budget" if budget_stop else ("limit" if has_more else None)
@@ -331,10 +341,15 @@ class RetrievalEngine:
         if state == "lagging":
             notes.append(f"index is lagging: {pending} artifact(s) not yet current; source-level fallback hits "
                          "cover sources without a current indexed projection")
+        if page["stale"]:
+            notes.append(f"{page['stale']} indexed chunk(s) were dropped because their source changed on disk after "
+                         "it was indexed; the next discovery pass (brain_enrichment_pending or the CLI scan) "
+                         "re-projects it, base-search hits cover its current text meanwhile")
         return self._envelope(
             args, path="enrichment", used_ann=used_ann, page=page, groups=groups, notes=notes,
             index={"generation": reader.generation, "state": state,
-                   "lag": {"pending_artifacts": pending}, "fresh": pending == 0 and state == "ok"},
+                   "lag": {"pending_artifacts": pending},
+                   "fresh": pending == 0 and state == "ok" and not page["stale"]},
             coverage={"indexed_artifacts": counts["artifacts"], "total_artifacts": coverage_total,
                       "source_level_fallback_hits": fallback_hits, "stale_dropped": page["stale"]},
             truncated=bool(reason), reason=reason,
@@ -540,7 +555,19 @@ class RetrievalEngine:
         g = (res or {}).get(group) or {}
         return [h for h in g.get("results", []) if isinstance(h, dict) and h.get("ref")]
 
-    def _legacy_supplement(self, args, groups, cands, reader, notes) -> int:
+    def _stale_on_disk(self, art: dict) -> bool:
+        """The indexed version of this artifact is no longer the one on disk (one fresh read)."""
+        try:
+            if self.source_fresh is not None:
+                return not self.source_fresh(art["source_ref"], art["source_version"])
+            reader = getattr(self.store, "reader", None)
+            if reader is None:
+                return False
+            return reader.load(art["source_ref"]).source_version != art["source_version"]
+        except Exception:  # noqa: BLE001 - gone/unreadable: the base hit itself says what is on disk
+            return True
+
+    def _legacy_supplement(self, args, groups, cands, reader, notes, allow_stale: bool = False) -> int:
         n = min(FALLBACK_POOL_MAX, max(args["limit"], 10))
         res, mode = None, "lexical"
         try:
@@ -558,8 +585,11 @@ class RetrievalEngine:
             r = 0
             for h in self._legacy_flat(res, g):
                 ref = h["ref"]
-                if reader.artifact_by_ref(ref) is not None:
+                art = reader.artifact_by_ref(ref)
+                if art is not None and not (allow_stale and self._stale_on_disk(art)):
                     continue                       # covered by the index: its chunk routes already see it
+                if "src:" + ref in cands[g]:
+                    continue
                 r += 1
                 c = Cand("src:" + ref, g, ref, legacy=h)
                 c.r_legacy = r
