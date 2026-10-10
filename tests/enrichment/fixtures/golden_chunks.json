@@ -1,0 +1,218 @@
+{
+ "chunker_version": "chunk-1",
+ "source_ref": "cap:cap-20260101-000000-aaaa",
+ "policy": {
+  "soft_max": 4000,
+  "hard_max": 6000,
+  "min_tail": 400,
+  "overlap": 0
+ },
+ "cases": {
+  "long_text_default": {
+   "text_sha256": "e6c788a294ac8f25e61c4e2705a04277fb5cc29847c1d40d0fe6b108da716250",
+   "chars": 7783,
+   "source_version": "2cc9dea41e82fffad2a2c5dfe442e6e74303b95e2d2b9d0bc84b37ea678f593a",
+   "chunks": [
+    {
+     "index": 0,
+     "start": 0,
+     "end": 3872,
+     "chars": 3872,
+     "chunk_ref": "chk:abf8192d721eef8a560afafe2554595a",
+     "head": "# طرح کلی پروژه نیل\n\n## بخش 1\n\nپ",
+     "tail": "t the Nil manuscript timeline.\n\n"
+    },
+    {
+     "index": 1,
+     "start": 3872,
+     "end": 7783,
+     "chars": 3911,
+     "chunk_ref": "chk:f07474f581d97668df86d3a710be46c3",
+     "head": "پاراگراف 16: این یک جملهٔ آزمایش",
+     "tail": "--- | --- |\n| a | 1 |\n| b | 2 |\n"
+    }
+   ]
+  },
+  "long_text_60": {
+   "text_sha256": "18773ef4fae0c2e4f55866da6fe7fd22743e9859b4848d3511e9bf3884ee2df6",
+   "chars": 15503,
+   "source_version": "daf85ed6adf2f99a9bb4d658f9ccad52f86fd38cf43e6c488aca0143755c0593",
+   "chunks": [
+    {
+     "index": 0,
+     "start": 0,
+     "end": 3872,
+     "chars": 3872,
+     "chunk_ref": "chk:a0b00437c8ce5c6d6a2a77d6be827980",
+     "head": "# طرح کلی پروژه نیل\n\n## بخش 1\n\nپ",
+     "tail": "t the Nil manuscript timeline.\n\n"
+    },
+    {
+     "index": 1,
+     "start": 3872,
+     "end": 7732,
+     "chars": 3860,
+     "chunk_ref": "chk:80fa36f2ffc45bc027174c13352985a9",
+     "head": "پاراگراف 16: این یک جملهٔ آزمایش",
+     "tail": "t the Nil manuscript timeline.\n\n"
+    },
+    {
+     "index": 2,
+     "start": 7732,
+     "end": 11592,
+     "chars": 3860,
+     "chunk_ref": "chk:d3f80cfe2aeb3b070bd4fae4c866d9cd",
+     "head": "پاراگراف 31: این یک جملهٔ آزمایش",
+     "tail": "t the Nil manuscript timeline.\n\n"
+    },
+    {
+     "index": 3,
+     "start": 11592,
+     "end": 15503,
+     "chars": 3911,
+     "chunk_ref": "chk:ed0af5bddeed076e2e0f3f7c9a2b8649",
+     "head": "پاراگراف 46: این یک جملهٔ آزمایش",
+     "tail": "--- | --- |\n| a | 1 |\n| b | 2 |\n"
+    }
+   ]
+  },
+  "persian_single_paragraph": {
+   "text_sha256": "6e9c3d5f15eaf96a47a776e9d4e019504bbf2283fac655c07a2793df4e25013f",
+   "chars": 18300,
+   "source_version": "434bed7c2ca0f2e2519bbbea8249354ebb96a542b27a96b25ed4061dc29eefd8",
+   "chunks": [
+    {
+     "index": 0,
+     "start": 0,
+     "end": 3965,
+     "chars": 3965,
+     "chunk_ref": "chk:e953d47ac4810673bd4870e169f97543",
+     "head": "این یک جملهٔ آزمایشی دربارهٔ پرو",
+     "tail": "پروژهٔ نیل و برنامهٔ نوشتن است؟ "
+    },
+    {
+     "index": 1,
+     "start": 3965,
+     "end": 7930,
+     "chars": 3965,
+     "chunk_ref": "chk:d30ed7fea9fa05ed91fb33cb6c8fdb57",
+     "head": "این یک جملهٔ آزمایشی دربارهٔ پرو",
+     "tail": "پروژهٔ نیل و برنامهٔ نوشتن است؟ "
+    },
+    {
+     "index": 2,
+     "start": 7930,
+     "end": 11895,
+     "chars": 3965,
+     "chunk_ref": "chk:fdd20383bb934e5025c41459b6b43067",
+     "head": "این یک جملهٔ آزمایشی دربارهٔ پرو",
+     "tail": "پروژهٔ نیل و برنامهٔ نوشتن است؟ "
+    },
+    {
+     "index": 3,
+     "start": 11895,
+     "end": 15860,
+     "chars": 3965,
+     "chunk_ref": "chk:d1582da20936feeeb5c2ba7a80d891aa",
+     "head": "این یک جملهٔ آزمایشی دربارهٔ پرو",
+     "tail": "پروژهٔ نیل و برنامهٔ نوشتن است؟ "
+    },
+    {
+     "index": 4,
+     "start": 15860,
+     "end": 18300,
+     "chars": 2440,
+     "chunk_ref": "chk:9bb426e179ba6370571d9b5cacf403bc",
+     "head": "این یک جملهٔ آزمایشی دربارهٔ پرو",
+     "tail": "پروژهٔ نیل و برنامهٔ نوشتن است؟ "
+    }
+   ]
+  },
+  "crlf_document": {
+   "text_sha256": "fbee5934754071821b909298673fcef46a0b5000cc0f9ec252816efad4d0ab9d",
+   "chars": 12368,
+   "source_version": "38240a1bb456da8520a6d234bd7953ac5fd82d5974d8c53177444225407a33b0",
+   "chunks": [
+    {
+     "index": 0,
+     "start": 0,
+     "end": 3956,
+     "chars": 3956,
+     "chunk_ref": "chk:be9232ee738c909ad50950ec901af02f",
+     "head": "سطر 0 با نیم‌فاصله، ZWNJ‌ و متن ",
+     "tail": "‌ و متن انگلیسی sentence 71.\r\n\r\n"
+    },
+    {
+     "index": 1,
+     "start": 3956,
+     "end": 7505,
+     "chars": 3549,
+     "chunk_ref": "chk:ed007ce57e48dffdae5ca0e69a97b5df",
+     "head": "سطر 72 با نیم‌فاصله، ZWNJ‌ و متن",
+     "tail": " و متن انگلیسی sentence 134.\r\n\r\n"
+    },
+    {
+     "index": 2,
+     "start": 7505,
+     "end": 11110,
+     "chars": 3605,
+     "chunk_ref": "chk:ae4ce32ad6bbb147028b91e881c87e1b",
+     "head": "سطر 135 با نیم‌فاصله، ZWNJ‌ و مت",
+     "tail": " و متن انگلیسی sentence 197.\r\n\r\n"
+    },
+    {
+     "index": 3,
+     "start": 11110,
+     "end": 12368,
+     "chars": 1258,
+     "chunk_ref": "chk:ae669e2b7b0c7fa79c99e6d1444e416d",
+     "head": "سطر 198 با نیم‌فاصله، ZWNJ‌ و مت",
+     "tail": "J‌ و متن انگلیسی sentence 219.\r\n"
+    }
+   ]
+  },
+  "hard_cut_crlf": {
+   "text_sha256": "b65d409571f467eeeb568cd0ad7dfbc4de50c4598ca5e4ef89ffa9b7b86040dc",
+   "chars": 14003,
+   "source_version": "2f1876732353c58293f8ef42b5284f7dc54b61d7966b2a5eac6c8fceb39c2dbd",
+   "chunks": [
+    {
+     "index": 0,
+     "start": 0,
+     "end": 4001,
+     "chars": 4001,
+     "chunk_ref": "chk:418ccadaca5f69237da1e8cff33b18c5",
+     "head": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "tail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\r\n"
+    },
+    {
+     "index": 1,
+     "start": 4001,
+     "end": 8001,
+     "chars": 4000,
+     "chunk_ref": "chk:55cac06a3a7a866684ea2e9d9d4bcbb7",
+     "head": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "tail": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    },
+    {
+     "index": 2,
+     "start": 8001,
+     "end": 12001,
+     "chars": 4000,
+     "chunk_ref": "chk:6321413d667592b5766da53512c0e33d",
+     "head": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "tail": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    },
+    {
+     "index": 3,
+     "start": 12001,
+     "end": 14003,
+     "chars": 2002,
+     "chunk_ref": "chk:4fc7cfce4531098e68717e9d84f4b281",
+     "head": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+     "tail": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    }
+   ]
+  }
+ }
+}
