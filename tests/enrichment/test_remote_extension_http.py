@@ -20,9 +20,10 @@ def test_extension_tools_work_over_http_with_shared_refs(enrichment_wiki):
 
     async def scenario(s):
         out = {"tools": [t.name for t in (await s.list_tools()).tools]}
-        pend = text_of(await s.call_tool("brain_enrichment_pending", {"limit": 1}))
+        # queue order among same-second captures is by random id suffix: pick a text capture explicitly
+        pend = text_of(await s.call_tool("brain_enrichment_pending", {"limit": 5}))
         out["pending"] = pend
-        item = pend["items"][0]
+        item = next(i for i in pend["items"] if i["source_kind"] == "capture-text" and i["page"]["total"] == 1)
         ref = out["ref"] = item["source_ref"]
         out["base_read"] = text_of(await s.call_tool("brain_read", {"ref": ref}))
         chunk = item["page"]["chunks"][0]
@@ -50,7 +51,7 @@ def test_extension_tools_work_over_http_with_shared_refs(enrichment_wiki):
                                       "evidence": [{"chunk_ref": chunk["chunk_ref"], "quote": "never written text"}]}]}}))
         out["art"] = text_of(await s.call_tool("brain_artifact_read", {"source_ref": ref}))
         out["chunk"] = text_of(await s.call_tool("brain_artifact_read", {"source_ref": ref, "chunk_ref": chunk["chunk_ref"]}))
-        out["retrieve"] = text_of(await s.call_tool("brain_retrieve", {"query": mention, "scope": "all"}))
+        out["retrieve"] = text_of(await s.call_tool("brain_retrieve", {"query": chunk["text"][:60], "scope": "all", "limit": 20}))
         out["by_metadata"] = text_of(await s.call_tool("brain_retrieve", {"query": "fitness", "scope": "captures"}))
         out["unknown"] = text_of(await s.call_tool("brain_retrieve", {"query": "x", "path": "/etc/passwd"}))
         out["old_prop_with_chk"] = text_of(await s.call_tool("brain_read", {"ref": chunk["chunk_ref"]}))
