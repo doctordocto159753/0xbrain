@@ -260,7 +260,8 @@ class FakeProjectionStore:
         cur_n = cur["revision"] if cur else 0
         if request["expected_annotation_revision"] != cur_n:
             raise C.EnrichmentError("E_CONFLICT", "annotation revision moved", current_revision=cur_n)
-        rev = {"revision": cur_n + 1, "source_version": proj.source_version, "annotation": request["annotation"]}
+        rev = {"revision": cur_n + 1, "source_version": proj.source_version,
+               "annotation": request["annotation"], "derived": request.get("derived")}
         self.revisions.setdefault(ref, []).append(rev)
         view = self.get(ref)
         receipt = C.AnnotationReceipt(ref, proj.source_version, rev["revision"], False, view.coverage, "annotated")
@@ -273,6 +274,42 @@ class FakeProjectionStore:
         self.reviews.append({**request, "by": human_context["actor"]})
         return C.ReviewReceipt(request["source_ref"], request["annotation_revision"], request["decision"],
                                human_context["actor"], "2026-10-10T00:00:00Z")
+
+    # -- read helpers (Protocol parity)
+    def get_chunks(self, source_ref, source_version=None):
+        proj = self.projections.get(source_ref)
+        if proj is None:
+            raise C.EnrichmentError("E_NOT_FOUND", f"no projection for {source_ref}")
+        if source_version and source_version != proj.source_version:
+            raise C.EnrichmentError("E_STALE_SOURCE", "source_version is not current")
+        return list(self.chunks.get(source_ref, []))
+
+    def get_chunk(self, chunk_ref):
+        for chs in self.chunks.values():
+            for c in chs:
+                if c.chunk_ref == chunk_ref:
+                    return c
+        raise C.EnrichmentError("E_NOT_FOUND", f"no such chunk {chunk_ref}")
+
+    def entity_exists(self, entity_id):
+        return any(e.get("entity_id") == entity_id for revs in self.revisions.values() for r in revs
+                   for e in (r.get("derived") or {}).get("entities", []))
+
+    def list_current(self, after, limit):
+        refs = sorted(r for r in self.projections if after is None or r > after)[:limit]
+        out = []
+        for r in refs:
+            p = self.projections[r]
+            cur = self._current_rev(r, p.source_version)
+            out.append({"projection": p, "chunks": list(self.chunks.get(r, [])),
+                        "annotation": cur["annotation"] if cur else None,
+                        "annotation_revision": cur["revision"] if cur else None,
+                        "review_state": "unreviewed",
+                        "processing_state": "annotated" if cur else p.processing_state})
+        return out
+
+    def change_marker(self):
+        return len(self.projections) + sum(len(v) for v in self.revisions.values()) + len(self.reviews)
 
     def pending(self, cursor, limit, retry_failed=False):
         todo = [r for r, p in self.projections.items() if p.layers and self._current_rev(r, p.source_version) is None]

@@ -153,3 +153,26 @@ def test_seeded_wiki_covers_the_contract_cases(enrichment_wiki):
     assert "\r\n" in w.texts["crlf"] and len(w.texts["long"]) > C.HARD_MAX
     before = corpus_hashes(w.root)
     assert before and corpus_hashes(w.root) == before
+
+
+def test_request_digest_ignores_server_derived_block():
+    r = {"source_ref": "cap:cap-1", "idempotency_key": "k-0000001", "annotation": {"tags": ["a"]}}
+    assert C.request_digest(r) == C.request_digest({**r, "derived": {"entities": []}})
+
+
+def test_fake_store_read_helpers_match_protocol():
+    st = FakeProjectionStore()
+    p = make_projection("cap:cap-1", [("user-text", "cap:cap-1", "hello world text\n", None)])
+    st.upsert_projection(p, naive_chunks(p))
+    m0 = st.change_marker()
+    assert st.get_chunks("cap:cap-1")[0].text and st.get_chunk(st.get_chunks("cap:cap-1")[0].chunk_ref)
+    cur = st.list_current(None, 10)
+    assert cur[0]["processing_state"] == "projected" and cur[0]["annotation"] is None
+    with pytest.raises(C.EnrichmentError) as e:
+        st.get_chunk("chk:" + "0" * 32)
+    assert e.value.code == "E_NOT_FOUND"
+    st.append_annotation({"source_ref": "cap:cap-1", "source_version": p.source_version,
+                          "expected_annotation_revision": 0, "idempotency_key": "key-00000001",
+                          "annotation": {"tags": ["a"]},
+                          "derived": {"entities": [{"entity_id": "ent:" + "a" * 24}]}})
+    assert st.change_marker() > m0 and st.entity_exists("ent:" + "a" * 24) and not st.entity_exists("ent:" + "b" * 24)

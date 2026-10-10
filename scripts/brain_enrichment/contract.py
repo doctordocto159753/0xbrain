@@ -147,9 +147,9 @@ def chunk_ref(digest: str) -> str:
 
 def request_digest(request: dict) -> str:
     """Idempotency fingerprint: canonical JSON of the request without its
-    idempotency_key."""
+    idempotency_key and without the server-computed `derived` block."""
     return hashlib.sha256(canonical_json({k: v for k, v in request.items()
-                                          if k != "idempotency_key"})).hexdigest()
+                                          if k not in ("idempotency_key", "derived")})).hexdigest()
 
 
 def entity_id(source_ref: str, normal: str) -> str:
@@ -414,6 +414,14 @@ class ProjectionStore(Protocol):
     def get(self, source_ref: str, source_version: str | None = None) -> ArtifactView: ...
     def append_annotation(self, request: dict) -> AnnotationReceipt: ...
     def record_review(self, request: dict, human_context: dict) -> ReviewReceipt: ...
+    # read helpers shared by annotation (B), indexing/retrieval (C) and the surface (D)
+    def get_chunks(self, source_ref: str, source_version: str | None = None) -> list[Chunk]: ...
+    def get_chunk(self, chunk_ref: str) -> Chunk: ...   # E_NOT_FOUND | E_STALE_SOURCE (superseded version)
+    def entity_exists(self, entity_id: str) -> bool: ...
+    def list_current(self, after: str | None, limit: int) -> list[dict]: ...
+    # list_current item: {"projection": SourceProjection, "chunks": list[Chunk], "annotation": dict|None,
+    #   "annotation_revision": int|None, "review_state": str, "processing_state": str}
+    def change_marker(self) -> int: ...                 # monotonic; moves on any projection/annotation/review write
 
 
 class AnnotationService(Protocol):

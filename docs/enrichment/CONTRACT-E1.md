@@ -165,6 +165,13 @@ request and leave the previous revision untouched, error `E_VALIDATION` with
   `producer_reported` is stored as a claim, never as verified identity;
 * a summary is never accepted as evidence anywhere (no summary field is quote-checked).
 
+`AnnotationService.submit` validates the raw request, then calls
+`ProjectionStore.append_annotation` with the same request **plus** a server-computed
+`derived` block (`{"entities":[{entity_id,name,normal,kind,aliases,mention{chunk_ref,start_char,end_char,occurrences}}],
+"links":[{relation,edge_kind,src,dst,evidence[{chunk_ref,start_char,end_char,occurrences}]}]}`).
+`derived` is excluded from `request_digest` (idempotency compares only caller-supplied content);
+the store persists it and answers `entity_exists` from it.
+
 Server stores per revision: `{revision, source_ref, source_version, annotation (validated, normalised copy),
 request_digest, idempotency_key, producer_reported, received_at, coverage{annotated_chunks,total_chunks},
 review_state='unreviewed'}`. `summary`/`topics`/`tags` apply to the whole artifact and are
