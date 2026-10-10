@@ -10,7 +10,7 @@ This report states what was run and what it proves. It is not a deployment appro
 
 | Gate | Command | Result |
 |---|---|---|
-| Whole suite, one process | `python -m pytest -q -p no:cacheprovider tests` | 3 failed, ~1340 passed, 22 skipped. The 3 failures are the pre-existing baseline ones and need the `qmd` binary: `test_brain_fixtures[01-retrieve-prior-context]`, `[05-provisional-relation]`, `test_remote_semantic::test_remote_tool_list_is_exact_and_flow_works_end_to_end`. Baseline at `a245b3b`: 3 failed, 541 passed, 20 skipped. |
+| Whole suite, one process | `python -m pytest -q -p no:cacheprovider tests` | 3 failed, 1339 passed, 22 skipped (final run). The 3 failures are the pre-existing baseline ones and need the `qmd` binary: `test_brain_fixtures[01-retrieve-prior-context]`, `[05-provisional-relation]`, `test_remote_semantic::test_remote_tool_list_is_exact_and_flow_works_end_to_end`. Baseline at `a245b3b`: 3 failed, 541 passed, 20 skipped. One HTTP test of ours was order-dependent during integration; it was fixed and repeated 30 times without failure. |
 | Enrichment tests | `python -m pytest -q -p no:cacheprovider tests/enrichment` | all pass (A: projection/store/chunking, B: annotation/harness, C: index/graph/retrieval, D: surface/CLI/review, E: upgrade, AGENT-0: contract/adapter/HTTP). |
 | Repo validator | `python scripts/validate_repo.py --full` | PASS |
 | Content validator | `python scripts/validate_content_release.py` | exit 0 (after the agents' worktrees were removed) |
