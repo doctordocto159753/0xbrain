@@ -1,0 +1,64 @@
+{
+ "_comment": "CONTRACT-E1 golden vectors; re-derive with plain hashlib (see tests/enrichment/test_contract.py)",
+ "artifact_id": {
+  "instance": "zb-instance",
+  "source_ref": "cap:cap-20261001-120000-ab12",
+  "expected": "4e3fe21d872ba05c7c3d7a45bb96e6b8b37051aaa548a50395f8dad435e09a00"
+ },
+ "source_version": {
+  "source_ref": "cap:cap-20261001-120000-ab12",
+  "layers": [
+   {
+    "layer_id": "user-text",
+    "text_ref": "cap:cap-20261001-120000-ab12",
+    "text_sha256": "e3c2d07bcaefe08db8d5d242143aea1ae2728eb82b6ef1daa9977ef365f40069",
+    "origin": "capture:user-text",
+    "provenance_sha256": null
+   }
+  ],
+  "expected": "5f94d690354bc244844cf9f8353430979d7891ded2ab2c8f1cfb1459d142edcb"
+ },
+ "chunk": {
+  "source_ref": "cap:cap-20261001-120000-ab12",
+  "source_version": "5f94d690354bc244844cf9f8353430979d7891ded2ab2c8f1cfb1459d142edcb",
+  "layer_id": "user-text",
+  "start": 0,
+  "end": 4000,
+  "digest": "579361262bfb6bf54ac16b115738eeaf80679e8e9ee0d811876195aa923db4b8",
+  "chunk_ref": "chk:579361262bfb6bf54ac16b115738eeaf"
+ },
+ "normal_form": [
+  [
+   "كتاب‌های  ۱۲۳ ي",
+   "کتاب های 123 ی"
+  ],
+  [
+   "فیت پلن",
+   "فیت پلن"
+  ],
+  [
+   "Fit  PLAN",
+   "fit plan"
+  ],
+  [
+   "نيل — Nil",
+   "نیل — nil"
+  ],
+  [
+   "ﻓﻴﺖ",
+   "فیت"
+  ],
+  [
+   "مُحَمَّد",
+   "محمد"
+  ],
+  [
+   "ـــسلام",
+   "سلام"
+  ],
+  [
+   "a‏b",
+   "ab"
+  ]
+ ]
+}

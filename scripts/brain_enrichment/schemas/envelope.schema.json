@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CONTRACT-E1 artifact envelope (public, server-computed)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "artifact_id", "source_ref", "source_version", "source_kind", "source_tier", "source_authority_level", "layers", "quality_flags", "processing_state", "current_annotation_revision"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "artifact_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_ref": {"type": "string", "pattern": "^(rec|doc|cap):[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"},
+    "source_version": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_kind": {"enum": ["capture-text", "capture-media", "ingested-file", "canonical-record", "source-record", "derivative-text"]},
+    "source_tier": {"enum": ["capture", "source-record", "derivative", "canonical-record"]},
+    "source_authority_level": {"type": "integer", "minimum": 0, "maximum": 9},
+    "layers": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["layer_id", "text_ref", "text_sha256", "chars", "bytes", "literal", "reviewed", "tier", "authority_level"],
+      "properties": {
+        "layer_id": {"enum": ["user-text", "transcript", "extraction", "derivative-text", "record-text"]},
+        "text_ref": {"type": "string", "pattern": "^(rec|doc|cap):[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"},
+        "text_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "chars": {"type": "integer", "minimum": 0}, "bytes": {"type": "integer", "minimum": 0},
+        "literal": {"type": "boolean"}, "reviewed": {"type": "boolean"},
+        "tier": {"type": "string"}, "authority_level": {"type": "integer"}}}},
+    "quality_flags": {"type": "array", "items": {"type": "string"}},
+    "coverage_warnings": {"type": "array", "items": {"type": "string"}},
+    "processing_state": {"enum": ["discovered", "projected", "annotated", "failed", "stale", "no_text"]},
+    "projection_version": {"type": "string"},
+    "original_sha256": {"type": ["string", "null"]},
+    "current_annotation_revision": {"type": ["integer", "null"]}
+  }
+}

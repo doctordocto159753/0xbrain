@@ -31,6 +31,7 @@ IGNORED_PREFIXES = (
     "venv/",
     "_search/",
     "_originals/",       # immutable originals are opaque bytes, never Markdown records
+    "_enrichment/",      # enrichment sidecar: SQLite/JSON only, validated by its own tooling
     "02-sources/provenance/",
     "_proposals/patches/",
     "_proposals/generated/",
