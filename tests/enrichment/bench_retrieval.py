@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import statistics
 import sys
@@ -65,10 +66,14 @@ class LegacyExact:
         root = tmp / "legacy-wiki"
         (root / "00-system/configuration").mkdir(parents=True)
         shutil.copyfile(ROOT / sl.CONFIG_REL, root / sl.CONFIG_REL)
-        for d in data["documents"]:
+        # neutral file names: QMD indexes paths too, and the mnemonic labels (r_oral, c_fit ...)
+        # would leak query words into the baseline
+        self.label_of: dict[str, str] = {}
+        for i, d in enumerate(data["documents"], 1):
             rel = {"capture": "01-inbox/captures", "canonical": "03-objects", "ingested": "02-sources/text"}[d["kind"]]
             (root / rel).mkdir(parents=True, exist_ok=True)
-            (root / rel / f"{d['label']}.md").write_text(d["text"], encoding="utf-8", newline="")
+            (root / rel / f"doc-{i:03d}.md").write_text(d["text"], encoding="utf-8", newline="")
+            self.label_of[f"doc-{i:03d}"] = d["label"]
         self.root = root
         self.cfg = sl.load_config(root)
 
@@ -76,7 +81,23 @@ class LegacyExact:
         lists = []
         for scope in ("canonical", "captures"):
             res = sl.exact_search(query, scope, K, self.root, self.cfg)
-            lists.append([Path(r["path"]).stem for r in res["results"]])
+            lists.append([self.label_of[Path(r["path"]).stem] for r in res["results"]])
+        return interleave(lists)[:K]
+
+
+class LegacyLexical(LegacyExact):
+    """The production default of brain_search (mode=lexical): QMD BM25 + the search_lexical
+    ladder, model-free. Only when `qmd` is on PATH; the fair baseline for the +10 point target."""
+    name = "legacy-lexical"
+
+    def __init__(self, data: dict, tmp: Path):
+        super().__init__(data, tmp / "lexical")
+        os.environ["WIKI_QMD_HOME"] = str(tmp / "qmd-home")
+        sl.configure(self.root)
+
+    def run(self, query: str) -> list[str]:
+        res = sl.search(query, "lexical", "all", K, self.root)
+        lists = [[self.label_of[Path(r["path"]).stem] for r in res["groups"][g]["results"]] for g in ("canonical", "captures")]
         return interleave(lists)[:K]
 
 
@@ -138,8 +159,10 @@ def run_benchmark() -> dict:
     data = load()
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
-        systems = [LegacyExact(data, tmp), R1(data, tmp, annotations=False, name="r1-direct"),
-                   R1(data, tmp, annotations=True, name="r1")]
+        systems = [LegacyExact(data, tmp)]
+        if shutil.which("qmd"):
+            systems.append(LegacyLexical(data, tmp))
+        systems += [R1(data, tmp, annotations=False, name="r1-direct"), R1(data, tmp, annotations=True, name="r1")]
         return {"documents": len(data["documents"]), "queries_total": len(data["queries"]),
                 "results": [evaluate(s, data["queries"]) for s in systems]}
 
