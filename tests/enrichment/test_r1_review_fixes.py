@@ -307,8 +307,10 @@ def test_level3_salvage_includes_entry_pages_changed_after_the_backup(rig):
 
 # ------------------------------------------------ data preservation (review gate 4)
 def _all_hashes(root):
-    """sha256 + mode of EVERY file under root, .git included, tracked/untracked/ignored alike;
-    only the two sidecar locations the enrichment layer owns are listed separately."""
+    """sha256 + mode of EVERY file under root, .git included, tracked/untracked/ignored alike.
+    Derived, git-ignored locations are listed separately: the enrichment sidecar (`_enrichment/`,
+    `_search/enrichment/`) and the base search's own rebuildable QMD index (`_search/qmd/`, used
+    when WIKI_QMD_HOME is unset; production keeps it in the state dir)."""
     import hashlib
     import os
 
@@ -317,7 +319,7 @@ def _all_hashes(root):
         for f in fns:
             p = Path(dp) / f
             rel = p.relative_to(root).as_posix()
-            if rel.startswith(("_enrichment/", "_search/enrichment/")):
+            if rel.startswith(("_enrichment/", "_search/enrichment/", "_search/qmd/")):
                 sidecar.add(rel)
                 continue
             keep[rel] = (hashlib.sha256(p.read_bytes()).hexdigest(), os.lstat(p).st_mode)
@@ -355,6 +357,7 @@ def test_scan_annotate_index_retrieve_change_no_corpus_byte(stack):
     build_index(ext)                                                # derived index
     h3, side3 = _all_hashes(root)
     assert h3 == h0 and any(p.startswith("_search/enrichment/") for p in side3)
+    assert all(p.startswith(("_enrichment/", "_search/enrichment/", "_search/qmd/")) for p in side3)
 
     for q in ("فیت پلن", "fitness", "ferry Kolan", "Project Nil", "هنوز commit نشده"):
         assert ext.call("brain_retrieve", {"query": q})["ok"]
