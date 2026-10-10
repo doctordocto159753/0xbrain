@@ -174,6 +174,20 @@ class IndexReader:
             self._by_ref[source_ref] = self._artifact(row)
         return self._by_ref[source_ref]
 
+    def artifact_by_text_ref(self, text_ref: str) -> dict | None:
+        """The artifact one of whose layers carries `text_ref` (an ingested file's derivative
+        `doc:` belongs to its `rec:` holding: one holding, never two inputs)."""
+        art = self.artifact_by_ref(text_ref)
+        if art is not None:
+            return art
+        needle = json.dumps(text_ref)
+        for row in self.con.execute(f"SELECT * FROM artifacts WHERE layers LIKE :l AND {_vis()}",
+                                    {**self._p, "l": f"%{needle[1:-1]}%"}):
+            d = self._artifact(row)
+            if any(la.get("text_ref") == text_ref for la in d["layers"]):
+                return d
+        return None
+
     def artifact_by_id(self, artifact_id: str) -> dict | None:
         if artifact_id not in self._by_id:
             row = self.con.execute(f"SELECT * FROM artifacts WHERE artifact_id=:a AND {_vis()}",

@@ -425,3 +425,44 @@ def test_source_edited_after_indexing_is_found_before_the_next_discovery(stack):
     assert old["coverage"]["stale_dropped"] >= 1 and old["index"]["fresh"] is False
     assert any("changed on disk" in n for n in old["notes"]), old["notes"]
     assert all(h["chunk_ref"] is None for h in _hits(old) if h["source_ref"] == w.refs["canonical"])
+
+
+def test_cursor_pages_keep_the_supplemented_order(stack):
+    """Page 1 found nothing in the index and added base-search hits for sources edited after
+    indexing; later pages must rebuild that same order (the cursor says so): every hit once."""
+    from test_e2e_extension import scan_all
+    from support import record
+
+    w, ext, _ = stack
+    record(w.root, "03-objects/works/kavir.md", "obj-kavir", "Project Kavir", "Kavir is a desert novel.")
+    scan_all(w)
+    build_index(ext)
+    for rel in (w.paths["canonical"], "03-objects/works/kavir.md"):
+        p = w.root / rel
+        p.write_text(p.read_text(encoding="utf-8") + "\nZanzibar quokka appendix.\n", encoding="utf-8")
+    seen, cursor = [], None
+    for _ in range(10):
+        page = ext.call("brain_retrieve", {"query": "Zanzibar quokka", "limit": 1, **({"cursor": cursor} if cursor else {})})
+        assert page["ok"], page
+        seen += [h["source_ref"] for v in page["groups"].values() for h in v["results"]]
+        cursor = page["next_cursor"]
+        if not cursor:
+            break
+    assert sorted(seen) == sorted({w.refs["canonical"], "rec:obj-kavir"}), seen
+
+
+def test_a_held_file_is_one_holding_in_supplemented_results(stack):
+    """With the index lagging, base-search hits are added for uncovered sources. The derivative
+    `doc:` of an ingested file whose `rec:` holding is indexed is covered: never a second entry."""
+    from test_e2e_extension import scan_all
+    import wiki_capture as wc
+
+    w, ext, _ = stack
+    scan_all(w)
+    build_index(ext)
+    wc.capture_text("a new capture makes the index lag: ferry", "mcp", "en")
+    out = ext.call("brain_retrieve", {"query": "Kolan"})
+    assert out["index"]["state"] == "lagging" and out["coverage"]["source_level_fallback_hits"] >= 0
+    refs = [h["source_ref"] for h in _hits(out)]
+    assert w.refs["held_ok"] in refs, out
+    assert w.refs["held_ok_text"] not in refs, refs

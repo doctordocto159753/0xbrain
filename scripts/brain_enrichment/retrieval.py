@@ -219,9 +219,10 @@ class RetrievalEngine:
             raise C.EnrichmentError("E_BAD_CURSOR", "cursor is malformed")
         return cur
 
-    def _make_cursor(self, args, generation, marker, pos: dict, window: int) -> str:
+    def _make_cursor(self, args, generation, marker, pos: dict, window: int, supplemented: bool = False) -> str:
+        extra = {"x": 1} if supplemented else {}          # later pages rebuild the same (supplemented) order
         return C.encode_cursor("retrieve", q=C.sha256_text(args["query"]), s=args["scope"], g=generation,
-                               f=marker, o=pos, w=window)
+                               f=marker, o=pos, w=window, **extra)
 
     # ----------------------------------------------------- enrichment path
     def _enriched(self, args, reader, status) -> dict:
@@ -317,6 +318,9 @@ class RetrievalEngine:
             notes.append("index coverage is incomplete and no base search is available to cover the gap")
 
         # fuse, order, page
+        supplemented = bool(cur and cur.get("x") == 1 and pending == 0 and self.legacy_search is not None)
+        if supplemented:                                # page 1 added stale/empty-result base hits: same order
+            fallback_hits = self._legacy_supplement(args, groups, cands, reader, notes, allow_stale=True)
         ordered = {g: self._order(list(cands[g].values()), window, notes) for g in groups}
         pos = {g: (cur["o"].get(g, 0) if cur else 0) for g in groups}
         page = self._assemble(args, groups, ordered, pos, reader)
@@ -328,6 +332,7 @@ class RetrievalEngine:
             # with a superseded version. Never an empty "not found" while the corpus says otherwise.
             fallback_hits = self._legacy_supplement(args, groups, cands, reader, notes, allow_stale=True)
             if fallback_hits:
+                supplemented = True
                 ordered = {g: self._order(list(cands[g].values()), window, notes) for g in groups}
                 page = self._assemble(args, groups, ordered, {g: 0 for g in groups}, reader)
         has_more = any(page["pos"][g] < len(ordered[g]) for g in groups)
@@ -353,7 +358,7 @@ class RetrievalEngine:
             coverage={"indexed_artifacts": counts["artifacts"], "total_artifacts": coverage_total,
                       "source_level_fallback_hits": fallback_hits, "stale_dropped": page["stale"]},
             truncated=bool(reason), reason=reason,
-            next_cursor=(self._make_cursor(args, reader.generation, marker, page["pos"], window)
+            next_cursor=(self._make_cursor(args, reader.generation, marker, page["pos"], window, supplemented)
                          if has_more else None))
 
     # ----------------------------------------------------------- routes
@@ -585,7 +590,8 @@ class RetrievalEngine:
             r = 0
             for h in self._legacy_flat(res, g):
                 ref = h["ref"]
-                art = reader.artifact_by_ref(ref)
+                lookup = getattr(reader, "artifact_by_text_ref", reader.artifact_by_ref)
+                art = lookup(ref)                  # a held file's derivative doc: is its rec: holding
                 if art is not None and not (allow_stale and self._stale_on_disk(art)):
                     continue                       # covered by the index: its chunk routes already see it
                 if "src:" + ref in cands[g]:
