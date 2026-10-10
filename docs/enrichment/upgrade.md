@@ -38,7 +38,7 @@ One-page command sheet: `docs/enrichment/runbook.md`. Discovery record to fill i
 * **Allowlisted code only.** A release may touch only `scripts/brain_enrichment/**`,
   `harness/hermes/**`, `docs/enrichment/**`, `tests/enrichment/**`, the two new scripts, and the
   bounded hunks of the shared files (`.gitignore`, `.env.example`, `AGENTS.md`, the two validators,
-  `scripts/remote_mcp/adapter.py`) and instance-marker files (`README.md`, `HOME.md`,
+  `scripts/remote_mcp/adapter.py`, `docs/UPGRADE.md`, `tests/conftest.py`) and instance-marker files (`README.md`, `HOME.md`,
   `SYSTEM_DESIGN.md`, `CLAUDE.md`). Anything else in the diff (`compose*.yaml`, `Dockerfile`,
   `deploy/`, `install.sh`, `scripts/*.sh`, `requirements*`, `_originals/`, `01-inbox/` ... `07-genesis/`,
   `00-system/`, `_proposals/`, `_captures/`, `_enrichment/`, `_search/`, `.env*`) is a **STOP**.

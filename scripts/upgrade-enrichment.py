@@ -76,7 +76,10 @@ CODE_PREFIXES = ("scripts/brain_enrichment/", "harness/hermes/", "docs/enrichmen
 CODE_FILES = ("scripts/upgrade-enrichment.py", "scripts/enrichment-backup.py")
 # Shared-file hunks (CONTRACT-E1 section 13). Merge-aware, line-bounded; extend only with --shared-hunks.
 SHARED_FILES = (".gitignore", ".env.example", "AGENTS.md", "scripts/validate_repo.py",
-                "scripts/validate_content_release.py", "scripts/remote_mcp/adapter.py")
+                "scripts/validate_content_release.py", "scripts/remote_mcp/adapter.py",
+                # R1 integration hunks: the enrichment pointer in the legacy upgrade guide and the
+                # suite-level fixture (tests/enrichment/conftest.py shadowed tests/conftest.py)
+                "docs/UPGRADE.md", "tests/conftest.py")
 MARKER_FILES = ("README.md", "HOME.md", "SYSTEM_DESIGN.md", "CLAUDE.md")   # instance-edited: merge, never copy
 FORBIDDEN_TOPS = tuple(eb.CORPUS_ZONES) + ("_enrichment", "_search", ".git")
 ENV_WHITELIST = {"BRAIN_ENRICHMENT": ("off",), "BRAIN_ENRICHMENT_WRITES": ("0",), "BRAIN_ENRICHMENT_RETRIEVAL": ("0",),

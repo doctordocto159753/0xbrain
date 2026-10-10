@@ -220,3 +220,28 @@ def test_query_time_refresh_time_cap_activates_what_it_wrote(tmp_path):
     r = ib.refresh(25, max_seconds=0.0)
     assert r.activated and r.artifacts_indexed == 1 and r.artifacts_pending == 11 and r.lag["stopped"] == "time cap"
     assert ib.status()["lag"]["pending_artifacts"] == 11
+
+
+# --------------------------------- F3: the release must pass its own allowlist
+def test_the_r1_release_diff_is_inside_the_upgrade_allowlist():
+    """`upgrade-enrichment.py preflight/plan` STOPs on any path of base..target outside the
+    allowlist. The integrated release itself touched docs/UPGRADE.md and tests/conftest.py, so
+    the runbook commands stopped on the very release they ship (seen on a real rehearsal)."""
+    import importlib.util
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    base = "a245b3b2620800b1d2d6cc4be0dba6e44fb5b103"
+    have = subprocess.run(["git", "-C", str(root), "cat-file", "-e", base + "^{commit}"], capture_output=True)
+    if have.returncode != 0:
+        pytest.skip("base release commit not in this clone (shallow history)")
+    spec = importlib.util.spec_from_file_location("upgrade_enrichment_r", root / "scripts/upgrade-enrichment.py")
+    up = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = up                     # dataclasses resolve their module by name
+    spec.loader.exec_module(up)
+    paths = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "--no-renames", base, "HEAD"],
+                           capture_output=True, text=True, check=True).stdout.split()
+    refused = {p: up.classify_path(p) for p in paths if up.classify_path(p)[0] in ("outside", "forbidden")}
+    assert not refused, refused
