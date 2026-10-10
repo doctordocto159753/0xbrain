@@ -337,7 +337,12 @@ Rules callers must know:
   idempotency_key, annotation, derived?}`; no other keys. Errors: `E_STALE_SOURCE`, `E_CONFLICT`
   (`current_revision`), `E_IDEMPOTENCY_CONFLICT`, `E_NOT_FOUND`, `E_TOO_LARGE` (1 MiB request bound).
 * `list_current` items: `projection, chunks, annotation, annotation_revision, review_state,
-  processing_state, derived, producer_reported, received_at, annotation_policy`. Rejected revisions are
-  still returned (`review_state == "rejected"`); filtering is the index's decision.
+  processing_state, derived, producer_reported, received_at, annotation_policy`, plus the composed
+  `effective_annotation, effective_derived, effective_revision, effective_review_state,
+  annotation_window` (CONTRACT-E1 section 5 amendment). Rejected revisions are still returned
+  (`review_state == "rejected"`); the effective annotation leaves them out.
+* `list_current_light(after, limit)`: text-free rows for index dirty detection (`source_ref,
+  source_version, artifact_id, source_kind, chunk_refs, annotation_revision, review_state,
+  annotation_window`); `get_current_items(refs)`: `list_current` items for those refs only.
 * `E_STALE_SOURCE` raised for a chunk carries `source_ref` in `extra`; `resolve_chunk_ref` uses it to
   report `E_BAD_REF` when the chunk belongs to another source.

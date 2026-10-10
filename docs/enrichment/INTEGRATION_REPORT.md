@@ -1,5 +1,10 @@
 # R1 enrichment: integration report (AGENT-0)
 
+> Superseded on several points by `docs/enrichment/REVIEW_FIX_REPORT.md` (independent review, 2026-10-10):
+> eight defects fixed (F1-F8), the three baseline failures pass with QMD 2.8.3, a real Docker
+> upgrade/rollback rehearsal ran, and the retrieval benchmark is now compared with QMD lexical
+> (the production default), not exact search. Numbers below are as reported at integration time.
+
 Base: `a245b3b2620800b1d2d6cc4be0dba6e44fb5b103`. Contract freeze: CONTRACT-E1
 (`docs/enrichment/CONTRACT-E1.md`). Environment: Python 3.13, SQLite 3.45.1 (FTS5 present),
 no `qmd`, no Docker daemon, no access to the production VPS or a real corpus.

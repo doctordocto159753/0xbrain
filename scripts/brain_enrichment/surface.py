@@ -52,6 +52,7 @@ _PRIVATE_KEYS = frozenset({"anchor_path", "origin_path", "storage_path", "abs_pa
 # Fields whose value is source text or a verbatim quote: never rewritten.
 _VERBATIM_KEYS = frozenset({"text", "quote", "snippet", "context"})
 FALLBACK_REASON_CODES = ("E_UNAVAILABLE", "E_SCHEMA_UNSUPPORTED")
+QUERY_REFRESH_SECONDS = 2.0     # write-time cap of the index refresh a retrieve runs first
 
 _SECRET_ENV = re.compile(r"(SECRET|TOKEN|PASSWORD|PASSPHRASE|API_?KEY|CREDENTIAL)", re.I)
 _ABS_PATH = re.compile(r"(?<![\w:./-])(?:/[A-Za-z0-9._@+-]+){2,}|[A-Za-z]:\\[^\s'\"]+")
@@ -176,7 +177,9 @@ class Services:
             try:
                 return _call_factory(obj, {"root": self.root, "wiki_root": self.root,
                                            "index_path": self.root / C.INDEX_REL,
-                                           "config": self.config, **available})
+                                           "config": self.config,
+                                           # BRAIN_ENRICHMENT_MAX_INPUT_CHARS: the pending page cap
+                                           "max_input_chars": self.config.max_input_chars, **available})
             except C.EnrichmentError:
                 raise
             except sqlite3.Error as exc:
@@ -517,7 +520,10 @@ class ExtensionSurface:
             raise C.EnrichmentError("E_INTERNAL", "chunk layer is missing from the projection")
         meta = chunk.to_public(with_text=True)
         meta["text"] = text
-        entry = next((e for e in annotation_body(view.annotation).get("chunk_annotations", []) or []
+        ann = view.annotation
+        body = (ann["effective_annotation"] or {}) if isinstance(ann, dict) and "effective_annotation" in ann \
+            else annotation_body(ann)          # page-by-page revisions: the composed metadata
+        entry = next((e for e in body.get("chunk_annotations", []) or []
                       if isinstance(e, dict) and e.get("chunk_ref") == chunk_ref), None)
         return {"ok": True, "chunk": meta, "layer": dict(layer_pub),
                 "source": {"source_ref": source_ref, "source_version": chunk.source_version,
@@ -566,11 +572,14 @@ class ExtensionSurface:
 
     def _refresh_index(self) -> None:
         """Bounded incremental refresh at the start of a retrieve (CONTRACT-E1
-        section 7): at most INDEX_REFRESH_BATCH artifacts, never a full rebuild.
+        section 7): at most INDEX_REFRESH_BATCH artifacts and QUERY_REFRESH_SECONDS
+        of writing, never a full rebuild, never waiting for another refresh (a
+        concurrent query or the CLI): the reader then uses the active generation.
         Best effort: any failure leaves the previous generation in service and
         retrieval reports the lag."""
         try:
-            self.s.index(create=False).refresh(C.INDEX_REFRESH_BATCH, trust_marker=True)
+            self.s.index(create=False).refresh(C.INDEX_REFRESH_BATCH, trust_marker=True,
+                                               max_seconds=QUERY_REFRESH_SECONDS, blocking=False)
         except Exception:  # noqa: BLE001 - lag is reported by retrieval, never an error here
             pass
 

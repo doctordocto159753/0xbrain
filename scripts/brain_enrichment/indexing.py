@@ -18,9 +18,11 @@ Nothing in this module calls a model, the network or a subprocess.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -171,6 +173,20 @@ class IndexReader:
                                    {**self._p, "r": source_ref}).fetchone()
             self._by_ref[source_ref] = self._artifact(row)
         return self._by_ref[source_ref]
+
+    def artifact_by_text_ref(self, text_ref: str) -> dict | None:
+        """The artifact one of whose layers carries `text_ref` (an ingested file's derivative
+        `doc:` belongs to its `rec:` holding: one holding, never two inputs)."""
+        art = self.artifact_by_ref(text_ref)
+        if art is not None:
+            return art
+        needle = json.dumps(text_ref)
+        for row in self.con.execute(f"SELECT * FROM artifacts WHERE layers LIKE :l AND {_vis()}",
+                                    {**self._p, "l": f"%{needle[1:-1]}%"}):
+            d = self._artifact(row)
+            if any(la.get("text_ref") == text_ref for la in d["layers"]):
+                return d
+        return None
 
     def artifact_by_id(self, artifact_id: str) -> dict | None:
         if artifact_id not in self._by_id:
@@ -411,11 +427,10 @@ class IndexBuilder:
                         f"SELECT source_ref, fingerprint FROM artifacts WHERE {_vis()}", rd._p)}
                     stamp = self.graph.stamp()
                     pending, total, seen = 0, 0, set()
-                    for item in self._iter_items(store):
-                        ref = item["projection"].source_ref
+                    for ref, fp, _item in self._scan(store, stamp):
                         seen.add(ref)
                         total += 1
-                        if indexed.get(ref) != self._fingerprint(item, stamp):
+                        if indexed.get(ref) != fp:
                             pending += 1
                     pending += len(set(indexed) - seen)
                     self._lag_cache = (key, pending, total)
@@ -446,25 +461,82 @@ class IndexBuilder:
 
     def _fingerprint(self, item: dict, graph_stamp: str = "") -> str:
         p = item["projection"]
-        chunks = item.get("chunks") or []
-        payload = {"v": C.INDEX_SCHEMA_VERSION, "sv": p.source_version,
-                   "ar": item.get("annotation_revision"), "rs": item.get("review_state"),
-                   "cr": _sha("\n".join(c.chunk_ref for c in chunks)),
-                   "gs": graph_stamp if p.source_kind == "canonical-record" else ""}
+        return self._fp(p.source_version, item.get("annotation_revision"), item.get("review_state"),
+                        item.get("annotation_window"), [c.chunk_ref for c in item.get("chunks") or []],
+                        p.source_kind, graph_stamp)
+
+    def _fingerprint_light(self, row: dict, graph_stamp: str = "") -> str:
+        """Same value as `_fingerprint` of the full item, from a text-free row."""
+        return self._fp(row["source_version"], row.get("annotation_revision"), row.get("review_state"),
+                        row.get("annotation_window"), row["chunk_refs"], row["source_kind"], graph_stamp)
+
+    @staticmethod
+    def _fp(sv, ar, rs, aw, chunk_refs, kind, graph_stamp) -> str:
+        payload = {"v": C.INDEX_SCHEMA_VERSION, "sv": sv, "ar": ar, "rs": rs,
+                   "aw": aw,                                 # composed revisions + their review states
+                   "cr": _sha("\n".join(chunk_refs)),
+                   "gs": graph_stamp if kind == "canonical-record" else ""}
         return _sha(C.canonical_json(payload).decode("utf-8"))
 
+    def _scan(self, store=None, graph_stamp: str = ""):
+        """Yield (source_ref, fingerprint, item_or_None) for every current artifact. With a
+        store offering `list_current_light` this reads no text (item None: fetch it only if
+        dirty); otherwise it falls back to full items."""
+        store = store or self.store
+        light = getattr(store, "list_current_light", None)
+        if light is None:
+            for item in self._iter_items(store):
+                yield item["projection"].source_ref, self._fingerprint(item, graph_stamp), item
+            return
+        after = None
+        while True:
+            page = light(after, self.page_size)
+            if not page:
+                return
+            for row in page:
+                yield row["source_ref"], self._fingerprint_light(row, graph_stamp), None
+            after = page[-1]["source_ref"]
+            if len(page) < self.page_size:
+                return
+
     # --------------------------------------------------------------- refresh
-    def refresh(self, batch_limit: int = C.INDEX_REFRESH_BATCH, *, trust_marker: bool = False) -> IndexReceipt:
+    def refresh(self, batch_limit: int = C.INDEX_REFRESH_BATCH, *, trust_marker: bool = False,
+                max_seconds: float | None = None, blocking: bool = True) -> IndexReceipt:
         """Incremental: index at most `batch_limit` dirty artifacts (plus all
         removals) into a new generation and activate it atomically. Returns the
         remaining lag. `trust_marker=True` skips the scan when the store's
-        change_marker equals the one recorded by the last clean refresh."""
-        return self._run(max(1, int(batch_limit)), full=False, trust_marker=trust_marker)
+        change_marker equals the one recorded by the last clean refresh.
+
+        Query-time use (`brain_retrieve`): `blocking=False` returns at once when
+        another refresh (this process or another one, e.g. the CLI) is running,
+        and `max_seconds` stops writing artifacts after that long; whatever was
+        written is activated, the rest stays lag. Dirty detection reads no text
+        when the store offers `list_current_light`."""
+        return self._run(max(1, int(batch_limit)), full=False, trust_marker=trust_marker,
+                         max_seconds=max_seconds, blocking=blocking)
 
     def rebuild_full(self) -> IndexReceipt:
         """Explicit full rebuild (CLI action). Never called by a query. A
         corrupt index file is replaced (it is derived data)."""
         return self._run(None, full=True, trust_marker=False)
+
+    def _lock_path(self) -> Path:
+        return self.index_path.with_name(self.index_path.name + ".lock")
+
+    def _acquire_file_lock(self, blocking: bool):
+        """Cross-process writer lock (POSIX advisory). Returns an open fd, None when
+        locking is not supported here, or raises BlockingIOError when busy."""
+        try:
+            import fcntl  # noqa: PLC0415 - POSIX only; Windows runs single-process
+        except ImportError:
+            return None
+        fd = os.open(self._lock_path(), os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
 
     def _receipt_unavailable(self, exc: IndexUnavailable, pending: int | None = None) -> IndexReceipt:
         if pending is None:
@@ -475,19 +547,35 @@ class IndexBuilder:
         return IndexReceipt(generation=0, activated=False, artifacts_indexed=0, artifacts_pending=pending,
                             lag={"pending_artifacts": pending, "state": exc.state, "reason": exc.reason})
 
-    def _run(self, batch_limit, *, full: bool, trust_marker: bool) -> IndexReceipt:
-        with self._lock:
+    def _run(self, batch_limit, *, full: bool, trust_marker: bool, max_seconds: float | None = None,
+             blocking: bool = True) -> IndexReceipt:
+        busy = IndexReceipt(0, False, 0, 0, {"pending_artifacts": None,
+                                             "skipped": "another index refresh is running"})
+        if not self._lock.acquire(blocking=blocking):
+            return busy
+        try:
             if not fts5_available():
                 return self._receipt_unavailable(IndexUnavailable("unavailable", "FTS5 is not available"))
             self.index_path.parent.mkdir(parents=True, exist_ok=True)
             try:
-                con = self._open_or_create(full)
-            except IndexUnavailable as exc:
-                return self._receipt_unavailable(exc)
+                fd = self._acquire_file_lock(blocking)
+            except BlockingIOError:
+                return busy
             try:
-                return self._build(con, batch_limit, full, trust_marker)
+                try:
+                    con = self._open_or_create(full)
+                except IndexUnavailable as exc:
+                    return self._receipt_unavailable(exc)
+                try:
+                    deadline = None if max_seconds is None else time.monotonic() + max_seconds
+                    return self._build(con, batch_limit, full, trust_marker, deadline)
+                finally:
+                    con.close()
             finally:
-                con.close()
+                if fd is not None:
+                    os.close(fd)              # closing the descriptor releases the flock
+        finally:
+            self._lock.release()
 
     def _open_or_create(self, full: bool) -> sqlite3.Connection:
         try:
@@ -540,9 +628,9 @@ class IndexBuilder:
         return {r["source_ref"]: (r["artifact_id"], r["fingerprint"]) for r in con.execute(
             f"SELECT source_ref, artifact_id, fingerprint FROM artifacts WHERE {_vis()}", {"g": active})}
 
-    def _build(self, con, batch_limit, full: bool, trust_marker: bool) -> IndexReceipt:
+    def _build(self, con, batch_limit, full: bool, trust_marker: bool, deadline: float | None = None) -> IndexReceipt:
         active = self._active(con)
-        self._cleanup_orphans(con, active)
+        self._cleanup_orphans(con, active)             # safe: this process holds the writer locks
         marker = self.store.change_marker()
         if (trust_marker and not full and active is not None
                 and self._meta(con, "scanned_marker") == str(marker)):
@@ -550,24 +638,31 @@ class IndexBuilder:
             return IndexReceipt(active, False, 0, 0, {"pending_artifacts": 0, "indexed_artifacts": n,
                                                       "skipped": "store marker unchanged"})
         indexed = self._indexed_fingerprints(con, active)
-        # pass 1: every current ref (graph resolution needs the full set) + dirty detection
-        refs, dirty, kept = set(), [], []
+        # pass 1: every current ref (graph resolution needs the full set) + dirty detection.
+        # Text is read only for the artifacts that will be written in this batch.
+        refs, dirty, kept, fetch = set(), [], [], []
         self.graph.reset(())
         stamp = self.graph.stamp()
-        for item in self._iter_items():
-            ref = item["projection"].source_ref
+        for ref, fp, item in (self._scan(None, stamp) if not full else ()):
             refs.add(ref)
-            fp = self._fingerprint(item, stamp)
-            if full or indexed.get(ref, (None, None))[1] != fp:
+            if indexed.get(ref, (None, None))[1] != fp:
                 dirty.append((ref, fp))
-                if batch_limit is not None and len(kept) < batch_limit:
-                    kept.append((item, fp))
+                if batch_limit is not None and len(kept) + len(fetch) < batch_limit:
+                    (kept.append((item, fp)) if item is not None else fetch.append(ref))
+        if full:
+            for item in self._iter_items():
+                refs.add(item["projection"].source_ref)
+                dirty.append((item["projection"].source_ref, None))
+        if fetch:
+            # the item may have moved since the light scan: fingerprint what is actually written
+            kept += [(it, self._fingerprint(it, stamp)) for it in self.store.get_current_items(fetch)]
         removed = [(ref, aid) for ref, (aid, _fp) in indexed.items() if ref not in refs]
         self.graph.reset(refs)
         pending_total = len(dirty) + len(removed)
         if not dirty and not removed and active is not None:
             self._set_meta(con, "scanned_marker", marker)
             n = len(indexed)
+            self._lag_cache = ((marker, active, str(self.index_path)), 0, len(refs))
             return IndexReceipt(active, False, 0, 0, {"pending_artifacts": 0, "indexed_artifacts": n})
 
         gen = (active or 0) + 1
@@ -589,7 +684,11 @@ class IndexBuilder:
             todo = ((item, self._fingerprint(item, stamp)) for item in self._iter_items())
         else:
             todo = iter(kept)
+        cut_by_time = False
         for item, fp in todo:
+            if deadline is not None and written and time.monotonic() >= deadline:
+                cut_by_time = True                      # query-time cap: activate what is written
+                break
             with _txn(con):
                 self._write_artifact(con, gen, item, fp, retire=not full)
             written += 1
@@ -606,10 +705,12 @@ class IndexBuilder:
             self._set_meta(con, "building_generation", None)
         self._compact(con, gen)
         n = con.execute(f"SELECT COUNT(*) FROM artifacts WHERE {_vis()}", {"g": gen}).fetchone()[0]
-        self._lag_cache = None
-        return IndexReceipt(gen, True, written, remaining,
-                            {"pending_artifacts": remaining, "indexed_artifacts": n,
-                             "removed_artifacts": len(removed)})
+        # the lag of (marker, gen) is known now: status() need not scan the store again
+        self._lag_cache = ((marker, gen, str(self.index_path)), remaining, len(refs))
+        lag = {"pending_artifacts": remaining, "indexed_artifacts": n, "removed_artifacts": len(removed)}
+        if cut_by_time:
+            lag["stopped"] = "time cap"
+        return IndexReceipt(gen, True, written, remaining, lag)
 
     def _hook(self) -> None:
         if self._after_artifact is not None:
@@ -656,7 +757,8 @@ class IndexBuilder:
             (proj.artifact_id, proj.source_ref, proj.source_version, proj.source_kind, proj.source_tier,
              proj.source_authority_level, grp, json.dumps(layers, ensure_ascii=False),
              json.dumps(flags), item.get("processing_state") or proj.processing_state,
-             item.get("annotation_revision") if ann is not None else None, item.get("review_state"),
+             item.get("effective_revision", item.get("annotation_revision")) if ann is not None else None,
+             item.get("effective_review_state", item.get("review_state")),
              len(annotated), len(chunks), fp, gen))
         for c in chunks:
             cur = con.execute(
@@ -667,7 +769,7 @@ class IndexBuilder:
             con.execute("INSERT INTO fts_chunks(rowid, norm, chunk_ref) VALUES(?,?,?)",
                         (cur.lastrowid, C.normal_form(c.text), c.chunk_ref))
         if ann is not None:
-            rev = item.get("annotation_revision")
+            rev = item.get("effective_revision", item.get("annotation_revision"))
             for chunk_ref, fld, value, node_id in self._meta_values(ann, derived, chunk_refs):
                 norm = C.normal_form(value)
                 if not norm:

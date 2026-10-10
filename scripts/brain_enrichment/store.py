@@ -215,6 +215,95 @@ def annotation_policy(source_kind: str) -> str:
     return "annotate" if source_kind in ANNOTATE_KINDS else "skip"
 
 
+# Artifact-level annotation fields: in the effective annotation the latest revision of the
+# window that carries the key wins. chunk_annotations / entities / links are merged instead.
+ARTIFACT_FIELDS = ("summary", "topics", "tags", "categories", "message_role", "uncertainty",
+                   "producer_reported")
+
+
+def effective_window(revisions: list[dict], chunk_order: list[str]) -> list[dict]:
+    """The revisions that make up the effective annotation (see compose_effective). Each
+    revision dict needs `revision`, `review_state` and `named` (chunk refs its chunk_annotations
+    name). Shared by the full composition and the text-free index scan so both agree."""
+    usable = [r for r in revisions if r["review_state"] != "rejected"]
+    every = set(chunk_order)
+    start = max((i for i, r in enumerate(usable) if len(every) <= 1 or every <= set(r["named"])), default=0)
+    return usable[start:]
+
+
+def compose_effective(revisions: list[dict], chunk_order: list[str]) -> dict:
+    """The effective candidate annotation of ONE source version (CONTRACT-E1 section 5 amendment).
+
+    `revisions`: ascending dicts {revision, annotation, derived, review_state} of that version.
+    A long source is annotated page by page, one revision per page, so the latest revision alone
+    is not the artifact's metadata. Rules (deterministic, no model):
+
+    * rejected revisions never contribute (they stay in the store for audit);
+    * the window starts at the latest *complete* revision (its own chunk_annotations name every
+      chunk, or the version has at most one chunk) and runs to the newest one, so a full
+      re-annotation replaces older pages while page-by-page revisions add up;
+    * artifact fields: the newest revision in the window that carries the key;
+      chunk_annotations: newest entry per chunk_ref, in chunk order;
+      entities / links / derived entries: union, newest wins per key; each derived entry keeps
+      the `revision` it came from (graph provenance).
+
+    Returns {"annotation": dict|None, "derived": dict|None, "revision": int|None,
+    "review_state": str|None, "window": [[revision, review_state], ...]}."""
+    for r in revisions:
+        r.setdefault("named", {c.get("chunk_ref") for c in (r["annotation"].get("chunk_annotations") or [])
+                               if isinstance(c, dict)})
+    window = effective_window(revisions, chunk_order)
+    if not window:
+        return {"annotation": None, "derived": None, "revision": None,
+                "review_state": revisions[-1]["review_state"] if revisions else None, "window": []}
+    every = set(chunk_order)
+    ann: dict = {}
+    for f in ARTIFACT_FIELDS:
+        for r in reversed(window):
+            if f in r["annotation"]:
+                ann[f] = r["annotation"][f]
+                break
+    per_chunk: dict = {}
+    entities: dict = {}
+    links: dict = {}
+    d_entities: dict = {}
+    d_links: dict = {}
+    for r in window:
+        body = r["annotation"]
+        for ca in body.get("chunk_annotations") or []:
+            if isinstance(ca, dict) and ca.get("chunk_ref") in every:
+                per_chunk[ca["chunk_ref"]] = ca
+        for e in body.get("entities") or []:
+            if isinstance(e, dict):
+                entities.pop(C.normal_form(str(e.get("name", ""))), None)
+                entities[C.normal_form(str(e.get("name", "")))] = e
+        for lk in body.get("links") or []:
+            if isinstance(lk, dict):
+                key = (lk.get("relation"), _j(lk.get("target")))
+                links.pop(key, None)
+                links[key] = lk
+        derived = r.get("derived") or {}
+        for e in derived.get("entities") or []:
+            if isinstance(e, dict):
+                d_entities.pop(e.get("entity_id"), None)
+                d_entities[e.get("entity_id")] = {**e, "revision": r["revision"]}
+        for lk in derived.get("links") or []:
+            if isinstance(lk, dict):
+                key = (lk.get("relation"), lk.get("src"), lk.get("dst"))
+                d_links.pop(key, None)
+                d_links[key] = {**lk, "revision": r["revision"]}
+    if per_chunk:
+        ann["chunk_annotations"] = [per_chunk[c] for c in chunk_order if c in per_chunk]
+    if entities:
+        ann["entities"] = list(entities.values())
+    if links:
+        ann["links"] = list(links.values())
+    return {"annotation": ann or None,
+            "derived": {"entities": list(d_entities.values()), "links": list(d_links.values())},
+            "revision": window[-1]["revision"], "review_state": window[-1]["review_state"],
+            "window": [[r["revision"], r["review_state"]] for r in window]}
+
+
 def _err(code: str, message: str, **extra) -> C.EnrichmentError:
     return C.EnrichmentError(code, message, **extra)
 
@@ -548,10 +637,23 @@ class SQLiteProjectionStore:
 
     def _annotation_dict(self, cx, row) -> dict:
         cov = self._coverage(cx, row["source_ref"], row["source_version"])
+        eff = self._effective(cx, row["source_ref"], row["source_version"])
         return {"revision": row["revision"], "source_version": row["source_version"],
                 "annotation": json.loads(row["annotation"]),
                 "producer_reported": _unj(row["producer_reported"]), "received_at": row["received_at"],
-                "coverage": cov, "review_state": self._review_state(cx, row["source_ref"], row["revision"])}
+                "coverage": cov, "review_state": self._review_state(cx, row["source_ref"], row["revision"]),
+                "effective_annotation": eff["annotation"], "effective_revisions": eff["window"]}
+
+    def _effective(self, cx, ref: str, version: str) -> dict:
+        """compose_effective over every revision of `version` (see there)."""
+        revs = [{"revision": r["revision"], "annotation": json.loads(r["annotation"]),
+                 "derived": _unj(r["derived"]),
+                 "review_state": self._review_state(cx, ref, r["revision"])}
+                for r in cx.execute("SELECT revision, annotation, derived FROM annotation_revisions "
+                                    "WHERE source_ref=? AND source_version=? ORDER BY revision", (ref, version))]
+        order = [r[0] for r in cx.execute("SELECT chunk_ref FROM chunks WHERE source_ref=? AND source_version=? "
+                                          "ORDER BY idx", (ref, version))]
+        return compose_effective(revs, order)
 
     def _compute_state(self, cx, ref: str) -> str:
         src = cx.execute("SELECT * FROM sources WHERE source_ref=?", (ref,)).fetchone()
@@ -1150,25 +1252,82 @@ class SQLiteProjectionStore:
                 rows = cx.execute("SELECT * FROM sources WHERE present=1 AND current_version IS NOT NULL "
                                   "AND (? IS NULL OR source_ref > ?) ORDER BY source_ref LIMIT ?",
                                   (after, after, limit)).fetchall()
+                return [self._item(cx, s) for s in rows]
+        except _StoreMissing:
+            return []
+
+    def get_current_items(self, refs) -> list[dict]:
+        """list_current items for the given refs (current, present sources only; unknown refs
+        are skipped), ordered by source_ref. The index fetches text only for dirty artifacts."""
+        refs = sorted({r for r in refs if isinstance(r, str)})
+        try:
+            with self._read() as cx:
                 out = []
-                for s in rows:
-                    ref, ver = s["source_ref"], s["current_version"]
-                    proj = self._projection(cx, ref, ver, state=s["state"])
-                    chunks = self._chunks(cx, ref, ver, self._layer_texts(cx, ref, ver))
-                    rev, _ = self._revision_info(cx, ref, ver)
-                    ann = self._annotation_dict(cx, rev) if rev else None
-                    out.append({"projection": proj, "chunks": chunks,
-                                "annotation": ann["annotation"] if ann else None,
-                                "annotation_revision": rev["revision"] if rev else None,
-                                "review_state": self._review_state(cx, ref, rev["revision"] if rev else None),
-                                "processing_state": s["state"],
-                                "derived": _unj(rev["derived"]) if rev else None,
-                                "producer_reported": ann["producer_reported"] if ann else None,
-                                "received_at": rev["received_at"] if rev else None,
-                                "annotation_policy": annotation_policy(proj.source_kind)})
+                for ref in refs:
+                    s = cx.execute("SELECT * FROM sources WHERE source_ref=? AND present=1 AND "
+                                   "current_version IS NOT NULL", (ref,)).fetchone()
+                    if s is not None:
+                        out.append(self._item(cx, s))
                 return out
         except _StoreMissing:
             return []
+
+    def list_current_light(self, after: str | None, limit: int) -> list[dict]:
+        """Text-free rows for index dirty detection: everything the index fingerprint needs
+        (version, chunk refs, revision, review state, effective window) and nothing else, so a
+        query-time refresh never loads layer text or annotation bodies of clean artifacts."""
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+            raise _err("E_BAD_ARGUMENTS", "limit must be an integer in 1..1000")
+        try:
+            with self._read() as cx:
+                rows = cx.execute(
+                    "SELECT s.source_ref, s.current_version, p.artifact_id, p.source_kind FROM sources s "
+                    "JOIN projections p ON p.source_ref=s.source_ref AND p.source_version=s.current_version "
+                    "WHERE s.present=1 AND s.current_version IS NOT NULL AND (? IS NULL OR s.source_ref > ?) "
+                    "ORDER BY s.source_ref LIMIT ?", (after, after, limit)).fetchall()
+                out = []
+                for s in rows:
+                    ref, ver = s["source_ref"], s["current_version"]
+                    chunk_refs = [r[0] for r in cx.execute(
+                        "SELECT chunk_ref FROM chunks WHERE source_ref=? AND source_version=? ORDER BY idx",
+                        (ref, ver))]
+                    revs = []
+                    for (n,) in cx.execute("SELECT revision FROM annotation_revisions WHERE source_ref=? AND "
+                                           "source_version=? ORDER BY revision", (ref, ver)).fetchall():
+                        named = {r[0] for r in cx.execute("SELECT chunk_ref FROM annotation_chunks WHERE "
+                                                          "source_ref=? AND revision=?", (ref, n))}
+                        revs.append({"revision": n, "review_state": self._review_state(cx, ref, n), "named": named})
+                    window = effective_window(revs, chunk_refs)
+                    latest = revs[-1]["revision"] if revs else None
+                    out.append({"source_ref": ref, "source_version": ver, "artifact_id": s["artifact_id"],
+                                "source_kind": s["source_kind"], "chunk_refs": chunk_refs,
+                                "annotation_revision": latest,
+                                "review_state": self._review_state(cx, ref, latest),
+                                "annotation_window": [[r["revision"], r["review_state"]] for r in window]})
+                return out
+        except _StoreMissing:
+            return []
+
+    def _item(self, cx, s) -> dict:
+        ref, ver = s["source_ref"], s["current_version"]
+        proj = self._projection(cx, ref, ver, state=s["state"])
+        chunks = self._chunks(cx, ref, ver, self._layer_texts(cx, ref, ver))
+        rev, _ = self._revision_info(cx, ref, ver)
+        eff = self._effective(cx, ref, ver) if rev else compose_effective([], [])
+        return {"projection": proj, "chunks": chunks,
+                # composed metadata of every non-rejected revision of this version: the
+                # index and graph read these (page-by-page annotation adds up)
+                "effective_annotation": eff["annotation"], "effective_derived": eff["derived"],
+                "effective_revision": eff["revision"], "effective_review_state": eff["review_state"],
+                "annotation_window": eff["window"],
+                "annotation": json.loads(rev["annotation"]) if rev else None,
+                "annotation_revision": rev["revision"] if rev else None,
+                "review_state": self._review_state(cx, ref, rev["revision"] if rev else None),
+                "processing_state": s["state"],
+                "derived": _unj(rev["derived"]) if rev else None,
+                "producer_reported": _unj(rev["producer_reported"]) if rev else None,
+                "received_at": rev["received_at"] if rev else None,
+                "annotation_policy": annotation_policy(proj.source_kind)}
 
     def change_marker(self) -> int:
         try:

@@ -1133,7 +1133,10 @@ def test_list_current_pages_by_source_ref_and_marker_tracks_writes(w):
     rest = s.list_current(first[-1]["projection"].source_ref, 100)
     assert len(first) + len(rest) == 12
     assert set(first[0]) == {"projection", "chunks", "annotation", "annotation_revision", "review_state",
-                             "processing_state", "derived", "producer_reported", "received_at", "annotation_policy"}
+                             "processing_state", "derived", "producer_reported", "received_at", "annotation_policy",
+                             # composed page-by-page metadata (R1 review fix F1)
+                             "effective_annotation", "effective_derived", "effective_revision",
+                             "effective_review_state", "annotation_window"}
     nt = next(i for i in first + rest if i["projection"].source_ref == w.refs["voice_plain"])
     assert nt["chunks"] == [] and nt["processing_state"] == "no_text"
     with_text = next(i for i in first + rest if i["projection"].source_ref == w.refs["long"])

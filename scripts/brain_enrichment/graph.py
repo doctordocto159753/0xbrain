@@ -100,7 +100,10 @@ def derive_from_annotation(source_ref: str, annotation: dict) -> dict:
 
 def derived_of(item: dict) -> dict:
     """The store's `derived` block when present (item or annotation), else the
-    deterministic recomputation from the annotation."""
+    deterministic recomputation from the annotation. A store that composes
+    page-by-page revisions hands back `effective_derived`, which wins."""
+    if isinstance(item.get("effective_derived"), dict):
+        return item["effective_derived"]
     d = item.get("derived")
     if not isinstance(d, dict):
         ann = item.get("annotation") or {}
@@ -113,7 +116,12 @@ def derived_of(item: dict) -> dict:
 def usable_annotation(item: dict) -> dict | None:
     """The current annotation only when it may be indexed: not rejected, not
     bound to another source version. Rejected/stale revisions are never
-    indexed as current candidate metadata."""
+    indexed as current candidate metadata. When the store composed the
+    revisions of the current version (`effective_annotation`, rejected ones
+    already left out), that composition is the annotation."""
+    if "effective_annotation" in item:
+        eff = item["effective_annotation"]
+        return eff if isinstance(eff, dict) and eff else None
     ann = item.get("annotation")
     if not isinstance(ann, dict) or not ann:
         return None
@@ -330,8 +338,12 @@ class GraphBuilder:
     # -- candidate edges ---------------------------------------------------
     def _annotation_edges(self, item, art, chunk_refs, add_node, add_edge) -> None:
         proj = item["projection"]
-        rev = item.get("annotation_revision")
+        rev = item.get("effective_revision", item.get("annotation_revision"))
         derived = derived_of(item)
+
+        def rev_of(entry) -> int | None:
+            r = entry.get("revision")        # composed entries keep the revision they came from
+            return r if isinstance(r, int) and not isinstance(r, bool) else rev
 
         def valid_chunk(ref) -> bool:
             return isinstance(ref, str) and ref in chunk_refs
@@ -344,8 +356,9 @@ class GraphBuilder:
                                 "end_char": ev.get("end_char"), "occurrences": ev.get("occurrences")})
             return out
 
-        def prov(extra: dict) -> dict:
-            return {"origin": "annotation", "candidate": True, "annotation_revision": rev, **extra}
+        def prov(extra: dict, r=None) -> dict:
+            return {"origin": "annotation", "candidate": True, "annotation_revision": rev if r is None else r,
+                    **extra}
 
         def endpoint(raw) -> tuple[str | None, list[dict]]:
             """Normalise a derived src/dst. Chunk endpoints collapse to the
@@ -374,8 +387,8 @@ class GraphBuilder:
                               {"kind": e.get("kind"), "aliases": aliases}))
             m = e.get("mention") or {}
             ev = evidence_of([m]) if m else []
-            add_edge(art, eid, "semantic", "mentions", revision=rev,
-                     provenance=prov({"edge_kind": "semantic", "evidence": ev}))
+            add_edge(art, eid, "semantic", "mentions", revision=rev_of(e),
+                     provenance=prov({"edge_kind": "semantic", "evidence": ev}, rev_of(e)))
         for lk in derived.get("links") or []:
             rel = lk.get("relation")
             if rel not in C.LINK_RELATIONS:
@@ -388,9 +401,9 @@ class GraphBuilder:
             evidence = evidence_of(lk.get("evidence")) or sev or dev
             if not dst.startswith(("art:", "ent:")):
                 add_node(node_row(dst, "ref", proj.artifact_id, dst))
-            add_edge(src, dst, kind, rel, revision=rev,
+            add_edge(src, dst, kind, rel, revision=rev_of(lk),
                      provenance=prov({"edge_kind": kind, "evidence": evidence,
-                                      "reading": kind == "reading"}))
+                                      "reading": kind == "reading"}, rev_of(lk)))
 
 
 # -------------------------------------------------------------------- expand
