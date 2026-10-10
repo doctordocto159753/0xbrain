@@ -9,7 +9,7 @@ Contract:
   * handlers are synchronous and may block; the transport runs them in a
     worker thread.
 
-Production surface (fail-closed): exactly the seven semantic tools (K3 + brain_ingest_file)
+Production surface (fail-closed): the seven semantic tools (K3 + brain_ingest_file)
 (``brain_*``) from ``scripts/brain_surface``. ``BRAIN_MCP_ADAPTER`` accepts
 only ``semantic`` (default). ``legacy`` (the stdio ``wiki_*`` tools, which
 include path-based reads) is a development-only, NOT-for-product mode that
@@ -47,23 +47,37 @@ class ToolSpec:
     handler: Callable[[dict], "dict | str"]
 
 
-def semantic_adapter(root: Path | None = None) -> list[ToolSpec]:
-    """The seven semantic tools, bound to one BrainSurface over the WikiBackend."""
+def semantic_adapter(root: Path | None = None, env: dict | None = None) -> list[ToolSpec]:
+    """The seven semantic tools, bound to one BrainSurface over the WikiBackend,
+    plus the four enrichment tools when BRAIN_ENRICHMENT=on (CONTRACT-E1)."""
     if _SCRIPTS not in sys.path:
         sys.path.insert(0, _SCRIPTS)
     from brain_surface import BrainSurface, TOOLS  # noqa: PLC0415
     from brain_surface.backend import WikiBackend  # noqa: PLC0415
 
-    surface = BrainSurface(WikiBackend(root))
+    backend = WikiBackend(root)
+    surface = BrainSurface(backend)
 
     def bind(name: str) -> Callable[[dict], dict]:
         return lambda args: surface.call(name, args)
 
     specs = [ToolSpec(t["name"], t["description"], t["inputSchema"], bind(t["name"]))
              for t in TOOLS]
-    if tuple(s.name for s in specs) != SEMANTIC_TOOLS:
+    if tuple(s.name for s in specs) != SEMANTIC_TOOLS:      # drift guard runs BEFORE appending
         raise RuntimeError(f"semantic surface drifted from K3: {[s.name for s in specs]}")
-    return specs
+    return specs + _enrichment_specs(root, backend, os.environ if env is None else env)
+
+
+def _enrichment_specs(root: Path | None, backend, env) -> list[ToolSpec]:
+    """Extension tools; any failure to load them leaves the seven base tools intact."""
+    try:
+        from brain_enrichment.config import EnrichmentConfig  # noqa: PLC0415
+        from brain_enrichment.surface import build_extension, tool_specs  # noqa: PLC0415
+
+        ext = build_extension(root or ROOT, EnrichmentConfig.from_env(env), legacy_backend=backend)
+        return [ToolSpec(*t) for t in tool_specs(ext)] if ext is not None else []
+    except Exception:  # noqa: BLE001 - graceful absence is the contract
+        return []
 
 
 def legacy_adapter() -> list[ToolSpec]:
@@ -80,7 +94,7 @@ def load_adapter(spec: str | None = None, env: dict | None = None) -> list[ToolS
     env = os.environ if env is None else env
     spec = (spec if spec is not None else env.get("BRAIN_MCP_ADAPTER", "")).strip() or "semantic"
     if spec == "semantic":
-        tools = semantic_adapter()
+        tools = semantic_adapter(env=env)
     elif spec == "legacy":
         if env.get("BRAIN_UNSAFE_REMOTE_LEGACY") != "1":
             raise ValueError("BRAIN_MCP_ADAPTER=legacy is a development-only, unsafe mode; "
