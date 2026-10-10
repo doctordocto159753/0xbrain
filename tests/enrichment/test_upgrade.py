@@ -346,7 +346,31 @@ def rig(enrichment_wiki, tmp_path, monkeypatch):
     # --- the deployed wiki as of the base release
     env_ex = (wiki / ".env.example").read_text()
     assert "# BRAIN_ENRICHMENT_MAX_OUTPUT_BYTES=65536" in env_ex
-    commit_files(wiki, {".env.example": env_ex.replace("# BRAIN_ENRICHMENT_MAX_OUTPUT_BYTES=65536\n", "")}, "older deployed state")
+    # The seeded wiki is a copy of THIS repo, which already contains the R1 code. The
+    # deployed base predates it: drop everything R1 adds beyond the frozen contract files.
+    keep = {"__init__.py", "contract.py", "config.py", "tools_spec.py"}
+    gone = {}
+    for sub in ("scripts/brain_enrichment", "harness", "docs/enrichment", "tests/enrichment"):
+        d = wiki / sub
+        for f in (sorted(d.rglob("*")) if d.is_dir() else []):
+            rel = f.relative_to(wiki).as_posix()
+            if f.is_file() and not (sub == "scripts/brain_enrichment" and (f.name in keep or "schemas/" in rel
+                                                                          or "__pycache__" in rel)):
+                gone[rel] = None
+    gone.update({"scripts/enrichment-backup.py": None, "scripts/upgrade-enrichment.py": None})
+    gone = {k: None for k in gone if (wiki / k).is_file()}
+    commit_files(wiki, {**gone, ".env.example": env_ex.replace("# BRAIN_ENRICHMENT_MAX_OUTPUT_BYTES=65536\n", "")},
+                 "older deployed state")
+    for sub in ("scripts/brain_enrichment", "harness", "docs/enrichment", "tests/enrichment"):
+        d = wiki / sub                       # git does not track empty dirs; the base had none either
+        for dd in sorted((x for x in d.rglob("*") if x.is_dir()), reverse=True) if d.is_dir() else []:
+            if not any(dd.iterdir()):
+                dd.rmdir()
+        if d.is_dir() and not any(d.iterdir()):
+            d.rmdir()
+    for sub in ("harness", "docs", "tests"):
+        if (wiki / sub).is_dir() and not any((wiki / sub).iterdir()):
+            (wiki / sub).rmdir()
     base = git(wiki, "rev-parse", "HEAD")
     release = root / "release"
     subprocess.run(["git", "clone", "-q", str(wiki), str(release)], check=True, capture_output=True)
