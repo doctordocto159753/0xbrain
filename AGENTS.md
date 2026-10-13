@@ -42,6 +42,13 @@ those remain canonical.
   tools of `scripts/remote_mcp/server.py` (`docs/claude/TOOL_USAGE.md`;
   standing instructions: `docs/claude/STANDING_INSTRUCTIONS.md`). Review,
   acceptance and promotion are human-only (`scripts/brain_review.py`).
+- **Enrichment layer (optional, default OFF):** `scripts/brain_enrichment/` adds
+  derived artifacts, chunks, candidate metadata, a small graph and four extra
+  tools (`brain_enrichment_pending`, `brain_enrichment_submit`,
+  `brain_artifact_read`, `brain_retrieve`) when `BRAIN_ENRICHMENT=on`. Model
+  metadata is candidate-tier (level 7) in `_enrichment/` (never in the corpus),
+  review is a human local CLI only, no model API key lives on the server.
+  Contract: `docs/enrichment/CONTRACT-E1.md`; usage: `docs/enrichment/usage.md`.
 - **Validation gates:** `python scripts/validate_repo.py [--full]` and
   (once populated) `python scripts/validate_content_release.py`.
   Deterministic; no network, no model calls.

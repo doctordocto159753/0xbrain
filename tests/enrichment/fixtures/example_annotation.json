@@ -1,0 +1,61 @@
+{
+ "summary": "برنامهٔ ورزشی روزانه و تمرین قدرتی دو بار در هفته.",
+ "topics": [
+  "ورزش",
+  "فیت پلن"
+ ],
+ "tags": [
+  "fitness",
+  "plan",
+  "پیاده‌روی"
+ ],
+ "categories": [
+  "personal"
+ ],
+ "message_role": "decision-proposal",
+ "entities": [
+  {
+   "name": "فیت پلن",
+   "kind": "project",
+   "aliases": [
+    "fit plan"
+   ],
+   "mention": {
+    "chunk_ref": "chk:579361262bfb6bf54ac16b115738eeaf",
+    "text": "فیت پلن"
+   }
+  }
+ ],
+ "links": [
+  {
+   "relation": "about",
+   "target": {
+    "entity": "فیت پلن"
+   },
+   "evidence": [
+    {
+     "chunk_ref": "chk:579361262bfb6bf54ac16b115738eeaf",
+     "quote": "هر روز ۳۰ دقیقه پیاده‌روی"
+    }
+   ],
+   "note": "main subject"
+  }
+ ],
+ "chunk_annotations": [
+  {
+   "chunk_ref": "chk:579361262bfb6bf54ac16b115738eeaf",
+   "summary": "برنامهٔ پیاده‌روی و تمرین",
+   "tags": [
+    "walking"
+   ]
+  }
+ ],
+ "uncertainty": [
+  "تاریخ شروع مشخص نیست"
+ ],
+ "producer_reported": {
+  "harness": "hermes",
+  "model": "unspecified",
+  "prompt_version": "annotate-1"
+ }
+}

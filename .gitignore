@@ -1,5 +1,7 @@
 # Rebuildable / runtime state
 _search/
+# Enrichment sidecar (private runtime state: SQLite/JSON; backed up, never committed)
+_enrichment/
 _exports/interchange/
 _audits/runtime/
 _proposals/generated/
